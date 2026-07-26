@@ -37,6 +37,22 @@ export type DocumentAnalysis = {
   analyzed_at: string;
 };
 
+export type GroundedEvidenceSource = {
+  title: string | null;
+  url: string;
+  domain: string | null;
+  summary: string | null;
+};
+
+export type GroundedClaimVerification = {
+  claim: string;
+  verdict: "SUPPORTED" | "PARTIALLY_SUPPORTED" | "NOT_SUPPORTED" | "INSUFFICIENT_EVIDENCE";
+  confidence: number;
+  explanation: string;
+  evidence_sources: GroundedEvidenceSource[];
+  verified_at: string;
+};
+
 export type KnowledgeDocument = {
   id: string;
   title: string;
@@ -47,6 +63,7 @@ export type KnowledgeDocument = {
   validation_findings: Finding[];
   contributor_review_decision: string | null;
   analysis: DocumentAnalysis | null;
+  grounded_claim_verifications: GroundedClaimVerification[] | null;
   created_at: string;
   updated_at: string;
 };

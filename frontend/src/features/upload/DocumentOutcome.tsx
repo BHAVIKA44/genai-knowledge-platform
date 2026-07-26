@@ -1,4 +1,8 @@
-import type { ContributorReviewDetails, KnowledgeDocument } from "../../api/documents";
+import type {
+  ContributorReviewDetails,
+  GroundedClaimVerification,
+  KnowledgeDocument,
+} from "../../api/documents";
 
 const labels: Record<KnowledgeDocument["status"], string> = {
   UPLOADED: "Upload accepted",
@@ -9,6 +13,13 @@ const labels: Record<KnowledgeDocument["status"], string> = {
   ADMIN_REVIEW_REQUIRED: "Manual review required",
   REJECTED: "Not published",
   FAILED: "Processing could not finish",
+};
+
+const verificationLabels: Record<GroundedClaimVerification["verdict"], string> = {
+  SUPPORTED: "Supported",
+  PARTIALLY_SUPPORTED: "Partially supported",
+  NOT_SUPPORTED: "Not supported",
+  INSUFFICIENT_EVIDENCE: "Not enough evidence",
 };
 
 type Props = {
@@ -96,6 +107,55 @@ export function DocumentOutcome({ document, review, onDecision, isDeciding }: Pr
           )}
         </section>
       )}
+      {document.grounded_claim_verifications?.length ? (
+        <section className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
+          <p className="font-medium text-white">External claim verification</p>
+          <div className="mt-3 space-y-3">
+            {document.grounded_claim_verifications.map((verification) => (
+              <article
+                key={`${verification.claim}-${verification.verified_at}`}
+                className="rounded-lg border border-white/10 p-3"
+              >
+                <p className="text-sm text-slate-200">{verification.claim}</p>
+                <p className="mt-2 text-sm font-medium text-sky-200">
+                  {verificationLabels[verification.verdict]}
+                  <span className="font-normal text-slate-400">
+                    {` · Confidence: ${Math.round(verification.confidence * 100)}%`}
+                  </span>
+                </p>
+                <p className="mt-2 text-sm text-slate-400">{verification.explanation}</p>
+                {verification.evidence_sources.length > 0 && (
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-sm font-medium text-sky-200">
+                      View evidence sources ({verification.evidence_sources.length})
+                    </summary>
+                    <ul className="mt-3 space-y-2 text-sm">
+                      {verification.evidence_sources.map((source) => (
+                        <li key={source.url}>
+                          <a
+                            className="text-sky-200 underline decoration-sky-200/40 underline-offset-2"
+                            href={source.url}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            {source.title || source.domain || "Evidence source"}
+                          </a>
+                          {source.domain && (
+                            <span className="text-slate-400"> · {source.domain}</span>
+                          )}
+                          {source.summary && (
+                            <p className="mt-1 text-slate-400">{source.summary}</p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {review && onDecision && (
         <div className="mt-6 rounded-xl border border-sky-300/20 bg-sky-300/[0.04] p-4">
           <p className="font-medium text-white">Review the suggested change</p>

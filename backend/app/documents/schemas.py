@@ -1,25 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from app.documents.models import DocumentStatus, DocumentType
 from app.knowledge_quality.models import QualityFinding
-
-
-class DocumentResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    title: str
-    source_filename: str
-    document_type: DocumentType
-    status: DocumentStatus
-    detected_topics: list[str]
-    validation_findings: list[QualityFinding]
-    contributor_review_decision: str | None
-    analysis: "DocumentAnalysisResponse | None" = None
-    created_at: datetime
-    updated_at: datetime
 
 
 class AnalysisClaimResponse(BaseModel):
@@ -37,6 +22,39 @@ class DocumentAnalysisResponse(BaseModel):
     model: str
     prompt_version: str
     analyzed_at: datetime
+
+
+class GroundedEvidenceSourceResponse(BaseModel):
+    title: str | None = None
+    url: str
+    domain: str | None = None
+    summary: str | None = None
+
+
+class GroundedClaimVerificationResponse(BaseModel):
+    claim: str
+    verdict: Literal["SUPPORTED", "PARTIALLY_SUPPORTED", "NOT_SUPPORTED", "INSUFFICIENT_EVIDENCE"]
+    confidence: float
+    explanation: str
+    evidence_sources: list[GroundedEvidenceSourceResponse]
+    verified_at: datetime
+
+
+class DocumentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    source_filename: str
+    document_type: DocumentType
+    status: DocumentStatus
+    detected_topics: list[str]
+    validation_findings: list[QualityFinding]
+    contributor_review_decision: str | None
+    analysis: DocumentAnalysisResponse | None = None
+    grounded_claim_verifications: list[GroundedClaimVerificationResponse] | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class ErrorDetail(BaseModel):

@@ -18,6 +18,7 @@ from app.documents.source_storage import LocalSourceStorage
 from app.documents.state import transition_status
 from app.documents.stored_document_parser import StoredDocumentParser
 from app.embeddings import DocumentEmbedder
+from app.grounding.service import ClaimVerificationResult, GroundedClaimVerificationService
 from app.knowledge_quality.engine import KnowledgeQualityEngine, ValidatorExecutionError
 from app.knowledge_quality.models import (
     FindingCategory,
@@ -51,6 +52,7 @@ class DocumentIngestionService:
         quality_engine: KnowledgeQualityEngine | None = None,
         analysis_client: GeminiKnowledgeClient | None = None,
         source_storage: LocalSourceStorage | None = None,
+        grounding_service: GroundedClaimVerificationService | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
@@ -58,6 +60,9 @@ class DocumentIngestionService:
         self.analysis_client = analysis_client or GeminiKnowledgeClient(settings)
         self.source_storage = source_storage or LocalSourceStorage(settings.source_storage_root)
         self.stored_document_parser = StoredDocumentParser(self.source_storage)
+        self.grounding_service = grounding_service or GroundedClaimVerificationService(
+            settings, self.analysis_client
+        )
 
     def submit(
         self, filename: str, content: bytes, declared_mime: str | None, title: str | None
@@ -139,14 +144,22 @@ class DocumentIngestionService:
 
             analysis = self._analyze(document, text)
             semantic_findings = self._semantic_findings(analysis)
-            document.validation_findings.extend(
-                finding.model_dump() for finding in semantic_findings
-            )
-            if any(finding.admin_review_required for finding in semantic_findings):
+            document.validation_findings = [
+                *document.validation_findings,
+                *(finding.model_dump() for finding in semantic_findings),
+            ]
+            grounding_results, grounding_findings = self._ground_claims(analysis)
+            document.validation_findings = [
+                *document.validation_findings,
+                *(finding.model_dump() for finding in grounding_findings),
+            ]
+            if any(
+                finding.admin_review_required for finding in semantic_findings + grounding_findings
+            ):
                 target_status = DocumentStatus.ADMIN_REVIEW_REQUIRED
             elif semantic_findings and target_status is DocumentStatus.APPROVED:
                 target_status = DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
-            self._persist_analysis(document, analysis, target_status)
+            self._persist_analysis(document, analysis, grounding_results, target_status)
         except DomainError as error:
             self._fail(document_id, error.code, error.message, error.action)
         except ValidatorExecutionError:
@@ -197,6 +210,7 @@ class DocumentIngestionService:
         self,
         document: KnowledgeDocument,
         analysis: KnowledgeAnalysis,
+        grounding_results: list[ClaimVerificationResult],
         target_status: DocumentStatus,
     ) -> None:
         document.analysis_summary = analysis.summary
@@ -206,6 +220,17 @@ class DocumentIngestionService:
         document.analysis_model = self.analysis_client.model
         document.analysis_prompt_version = self.analysis_client.prompt_version
         document.analyzed_at = now_utc()
+        document.grounded_claim_verifications = [
+            {
+                "claim": result.claim,
+                "verdict": result.verdict,
+                "confidence": result.confidence,
+                "explanation": result.explanation,
+                "evidence_sources": [source.model_dump() for source in result.evidence_sources],
+                "verified_at": result.verified_at.isoformat(),
+            }
+            for result in grounding_results
+        ]
         if target_status is DocumentStatus.APPROVED:
             self._index(document)
         self._complete_processing(document, target_status)
@@ -234,6 +259,66 @@ class DocumentIngestionService:
             )
             for index, finding in enumerate(analysis.semantic_findings, start=1)
         ]
+
+    def _ground_claims(
+        self, analysis: KnowledgeAnalysis
+    ) -> tuple[list[ClaimVerificationResult], list[QualityFinding]]:
+        eligible_claims = [
+            claim
+            for claim in analysis.claims
+            if claim.is_time_sensitive or claim.requires_external_verification
+        ]
+        if not eligible_claims:
+            return [], []
+        try:
+            results = self.grounding_service.verify(eligible_claims)
+        except DomainError as error:
+            if error.code != "GROUNDING_FAILED":
+                raise
+            return [], [
+                QualityFinding(
+                    code="GROUNDING_FAILED",
+                    category=FindingCategory.SEMANTIC_QUALITY,
+                    severity=FindingSeverity.WARNING,
+                    confidence=1,
+                    title="Claim verification could not finish",
+                    explanation="We could not verify the time-sensitive claims in this document.",
+                    suggested_action=(
+                        "An administrator should review this document before publishing."
+                    ),
+                    admin_review_required=True,
+                )
+            ]
+        return results, self._grounding_findings(results)
+
+    @staticmethod
+    def _grounding_findings(results: list[ClaimVerificationResult]) -> list[QualityFinding]:
+        findings = []
+        for index, result in enumerate(results, start=1):
+            if result.verdict == "SUPPORTED":
+                continue
+            if result.verdict == "NOT_SUPPORTED":
+                severity = FindingSeverity.BLOCKING
+                title = "Claim is not supported by grounded evidence"
+            elif result.verdict == "INSUFFICIENT_EVIDENCE":
+                severity = FindingSeverity.WARNING
+                title = "Claim requires additional evidence"
+            else:
+                severity = FindingSeverity.WARNING
+                title = "Claim is only partially supported"
+            findings.append(
+                QualityFinding(
+                    code=f"GROUNDED_CLAIM_{index}",
+                    category=FindingCategory.SEMANTIC_QUALITY,
+                    severity=severity,
+                    confidence=result.confidence,
+                    title=title,
+                    explanation=result.explanation,
+                    suggested_action="An administrator should review the available evidence.",
+                    admin_review_required=True,
+                )
+            )
+        return findings
 
     def _complete_processing(
         self, document: KnowledgeDocument, target_status: DocumentStatus

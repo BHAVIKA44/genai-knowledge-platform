@@ -258,6 +258,7 @@ def test_supported_pdf_is_extracted_with_docling(service, monkeypatch) -> None:
     monkeypatch.setattr(
         "app.documents.service.filetype.guess_mime", lambda *_args: "application/pdf"
     )
+    monkeypatch.setattr(service, "_index", lambda _: None)
 
     class ExtractedDocument:
         def export_to_markdown(self) -> str:
