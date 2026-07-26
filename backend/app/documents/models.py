@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+from json import dumps
 from uuid import uuid4
 
 from sqlalchemy import JSON, Column, Enum
+from sqlalchemy.orm import validates
 from sqlmodel import Field, SQLModel
 
 
@@ -54,6 +56,22 @@ class KnowledgeDocument(SQLModel, table=True):
     analysis_model: str | None = None
     analysis_prompt_version: str | None = None
     analyzed_at: datetime | None = None
+    grounded_claim_verifications: list[dict[str, object]] | None = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
     sha256: str = Field(index=True, unique=True)
     created_at: datetime = Field(default_factory=now_utc, nullable=False)
     updated_at: datetime = Field(default_factory=now_utc, nullable=False)
+
+    @validates("grounded_claim_verifications")
+    def validate_grounded_claim_verifications(
+        self, _: str, value: list[dict[str, object]] | None
+    ) -> list[dict[str, object]] | None:
+        if value is not None:
+            try:
+                dumps(value, allow_nan=False)
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    "Grounded claim verifications must contain JSON values."
+                ) from error
+        return value
