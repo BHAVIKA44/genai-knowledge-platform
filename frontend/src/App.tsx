@@ -8,6 +8,7 @@ import {
 } from "./api/documents";
 import { DocumentOutcome } from "./features/upload/DocumentOutcome";
 import { KnowledgeUploadPanel } from "./features/upload/KnowledgeUploadPanel";
+import { KnowledgeSearch } from "./features/search/KnowledgeSearch";
 import { useState } from "react";
 
 const finalStates = [
@@ -84,6 +85,7 @@ export default function App() {
               We could not refresh this result. Please try again.
             </p>
           )}
+          <KnowledgeSearch />
         </div>
       </div>
     </main>
