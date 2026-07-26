@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -34,3 +36,20 @@ class KnowledgeAnalysis(BaseModel):
             if cleaned:
                 normalized.setdefault(cleaned.casefold(), cleaned)
         return list(normalized.values())
+
+
+class EvidenceSource(BaseModel):
+    title: str | None = None
+    url: str = Field(min_length=1)
+
+
+class GroundedClaimVerification(BaseModel):
+    claim: str = Field(min_length=1)
+    verdict: Literal["SUPPORTED", "PARTIALLY_SUPPORTED", "NOT_SUPPORTED", "INSUFFICIENT_EVIDENCE"]
+    confidence: float = Field(ge=0, le=1)
+    explanation: str = Field(min_length=1)
+    evidence_sources: list[EvidenceSource] = Field(default_factory=list)
+
+
+class GroundedClaimAnalysis(BaseModel):
+    verifications: list[GroundedClaimVerification]

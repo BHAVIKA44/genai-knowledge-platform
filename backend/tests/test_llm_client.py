@@ -9,7 +9,7 @@ from app.llm.client import (
     GeminiTimeoutError,
     GeminiTransientError,
 )
-from app.llm.models import KnowledgeAnalysis
+from app.llm.models import EvidenceSource, KnowledgeAnalysis, KnowledgeClaim
 
 
 def test_topics_are_normalized_and_deduplicated() -> None:
@@ -193,3 +193,100 @@ def test_failure_logs_diagnostics_without_sensitive_content(
     assert document_text not in logged_values
     assert api_key not in logged_values
     assert "provider detail" not in logged_values
+
+
+class GroundingResponse:
+    def __init__(self, text: str, chunks: list[object]) -> None:
+        self.text = text
+        self.candidates = [
+            type(
+                "Candidate",
+                (),
+                {"grounding_metadata": type("Metadata", (), {"grounding_chunks": chunks})()},
+            )()
+        ]
+
+
+class GroundingClient:
+    def __init__(self, response: GroundingResponse | Exception) -> None:
+        self.response = response
+        self.models = self
+
+    def generate_content(self, **_: object) -> GroundingResponse:
+        if isinstance(self.response, Exception):
+            raise self.response
+        return self.response
+
+
+def test_grounding_evidence_sources_are_normalized_and_do_not_leak_sdk_objects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = [
+        type(
+            "Chunk",
+            (),
+            {
+                "web": type(
+                    "Web", (), {"title": " Gemini Docs ", "uri": "https://example.com/docs "}
+                )()
+            },
+        )(),
+        type(
+            "Chunk",
+            (),
+            {"web": type("Web", (), {"title": "Gemini Docs", "uri": "https://example.com/docs"})()},
+        )(),
+    ]
+    response = GroundingResponse(
+        '{"verifications":[{"claim":"Claim","verdict":"SUPPORTED","confidence":0.9,'
+        '"explanation":"Supported."}]}',
+        chunks,
+    )
+    monkeypatch.setattr("app.llm.client.genai.Client", lambda **_: GroundingClient(response))
+
+    result = GeminiKnowledgeClient(Settings(gemini_api_key="test")).verify_claims(
+        [
+            KnowledgeClaim(
+                text="Claim",
+                confidence=0.8,
+                is_time_sensitive=True,
+                requires_external_verification=False,
+            )
+        ]
+    )
+
+    assert result.verifications[0].evidence_sources == [
+        EvidenceSource(title="Gemini Docs", url="https://example.com/docs")
+    ]
+    assert "Chunk" not in repr(result)
+    assert "Web" not in repr(result)
+
+
+def test_grounding_failure_logs_no_claim_content_or_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claim_text = "Full document content must not be logged"
+    api_key = "secret-api-key"
+    recorder = LogRecorder()
+    monkeypatch.setattr(
+        "app.llm.client.genai.Client",
+        lambda **_: GroundingClient(RuntimeError("raw provider payload")),
+    )
+    monkeypatch.setattr("app.llm.client.logger", recorder)
+
+    with pytest.raises(GeminiTransientError):
+        GeminiKnowledgeClient(Settings(gemini_api_key=api_key, gemini_max_retries=0)).verify_claims(
+            [
+                KnowledgeClaim(
+                    text=claim_text,
+                    confidence=0.8,
+                    is_time_sensitive=False,
+                    requires_external_verification=True,
+                )
+            ]
+        )
+
+    logged_values = repr(recorder.calls)
+    assert claim_text not in logged_values
+    assert api_key not in logged_values
+    assert "raw provider payload" not in logged_values

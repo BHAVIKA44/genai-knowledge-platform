@@ -14,3 +14,12 @@ incomplete definitions, misleading wording, or technical ambiguity in the suppli
 
 Document:
 {text}"""
+
+CLAIM_GROUNDING_PROMPT = """Verify the listed GenAI technical claims using Google Search grounding.
+Do not decide document workflow or approval. Do not use hidden reasoning.
+Return JSON with verifications. Each verification must include the original claim text, verdict
+(SUPPORTED, PARTIALLY_SUPPORTED, NOT_SUPPORTED, or INSUFFICIENT_EVIDENCE), confidence from 0 to 1,
+and a concise explanation grounded in the available evidence.
+
+Claims:
+{claims}"""
