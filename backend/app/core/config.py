@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 10 * 1024 * 1024
     max_pdf_pages: int = 50
     min_meaningful_characters: int = 50
+    low_confidence_review_threshold: float = 0.7
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

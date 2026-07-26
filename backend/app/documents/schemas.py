@@ -1,23 +1,9 @@
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
 from app.documents.models import DocumentStatus, DocumentType
-
-
-class FindingSeverity(StrEnum):
-    INFO = "INFO"
-    WARNING = "WARNING"
-    BLOCKING = "BLOCKING"
-
-
-class ValidationFinding(BaseModel):
-    code: str
-    severity: FindingSeverity
-    title: str
-    explanation: str
-    suggested_action: str | None = None
+from app.knowledge_quality.models import QualityFinding
 
 
 class DocumentResponse(BaseModel):
@@ -29,7 +15,7 @@ class DocumentResponse(BaseModel):
     document_type: DocumentType
     status: DocumentStatus
     detected_topics: list[str]
-    validation_findings: list[ValidationFinding]
+    validation_findings: list[QualityFinding]
     created_at: datetime
     updated_at: datetime
 

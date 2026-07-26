@@ -1,5 +1,4 @@
 import hashlib
-import re
 import tempfile
 from pathlib import Path
 from uuid import uuid4
@@ -13,38 +12,33 @@ from sqlmodel import Session, select
 from app.core.config import Settings
 from app.core.errors import DomainError
 from app.documents.models import DocumentStatus, DocumentType, KnowledgeDocument, now_utc
-from app.documents.schemas import FindingSeverity, ValidationFinding
 from app.documents.state import transition_status
+from app.knowledge_quality.engine import KnowledgeQualityEngine, ValidatorExecutionError
+from app.knowledge_quality.models import (
+    FindingCategory,
+    FindingSeverity,
+    QualityFinding,
+    QualityValidationInput,
+)
 
 SUPPORTED_TYPES: dict[str, tuple[DocumentType, set[str]]] = {
     ".md": (DocumentType.MARKDOWN, {"text/markdown", "text/plain"}),
     ".txt": (DocumentType.TEXT, {"text/plain"}),
     ".pdf": (DocumentType.PDF, {"application/pdf"}),
 }
-TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "Large Language Models": ("large language model", "llm", "language model"),
-    "Retrieval-Augmented Generation": ("retrieval augmented", "rag", "retrieval"),
-    "Embeddings": ("embedding", "embeddings", "vector database", "vector search"),
-    "Transformers": ("transformer", "attention mechanism", "self-attention"),
-    "Prompt Engineering": ("prompt engineering", "prompt", "few-shot"),
-    "Agents": ("agent", "tool calling", "model context protocol", "mcp"),
-}
-ENGLISH_MARKERS = {"the", "and", "for", "with", "that", "this", "from", "are", "is", "to"}
 logger = structlog.get_logger()
 
 
-def _finding(
-    code: str, severity: FindingSeverity, title: str, explanation: str, action: str | None = None
-) -> ValidationFinding:
-    return ValidationFinding(
-        code=code, severity=severity, title=title, explanation=explanation, suggested_action=action
-    )
-
-
 class DocumentIngestionService:
-    def __init__(self, session: Session, settings: Settings) -> None:
+    def __init__(
+        self,
+        session: Session,
+        settings: Settings,
+        quality_engine: KnowledgeQualityEngine | None = None,
+    ) -> None:
         self.session = session
         self.settings = settings
+        self.quality_engine = quality_engine or KnowledgeQualityEngine(settings)
 
     def submit(
         self, filename: str, content: bytes, declared_mime: str | None, title: str | None
@@ -64,7 +58,7 @@ class DocumentIngestionService:
 
         display_name = Path(filename).name or "uploaded-document"
         document = KnowledgeDocument(
-            title=title.strip() if title and title.strip() else Path(display_name).stem,
+            title=title.strip() if title and title.strip() else "",
             source_filename=display_name,
             storage_filename=f"{uuid4()}{Path(display_name).suffix.lower()}",
             document_type=document_type,
@@ -87,25 +81,42 @@ class DocumentIngestionService:
             self.session.commit()
 
             text = self._extract_text(document.document_type, document.source_filename, content)
-            findings, topics = self._validate_extracted_text(text, document.title)
+            quality_result = self.quality_engine.validate(
+                QualityValidationInput(
+                    title=document.title,
+                    extracted_text=text,
+                    document_type=document.document_type,
+                )
+            )
 
             document = self.session.get(KnowledgeDocument, document_id)
             if document is None:
                 return
             document.status = transition_status(document.status, DocumentStatus.VALIDATING)
             document.extracted_text = text
-            document.validation_findings = [finding.model_dump() for finding in findings]
-            document.detected_topics = topics
+            document.validation_findings = [
+                finding.model_dump() for finding in quality_result.findings
+            ]
+            document.detected_topics = quality_result.detected_topics
             document.updated_at = now_utc()
             self.session.add(document)
             self.session.commit()
 
-            document.status = transition_status(document.status, self._route(findings))
+            document.status = transition_status(
+                document.status, DocumentStatus(quality_result.recommended_routing)
+            )
             document.updated_at = now_utc()
             self.session.add(document)
             self.session.commit()
         except DomainError as error:
             self._fail(document_id, error.code, error.message, error.action)
+        except ValidatorExecutionError:
+            self._fail(
+                document_id,
+                "QUALITY_VALIDATION_FAILED",
+                "We could not validate this document safely.",
+                "Please try again shortly.",
+            )
         except Exception:
             logger.exception("document_processing_failed", document_id=document_id)
             self._fail(
@@ -122,12 +133,14 @@ class DocumentIngestionService:
             return
         document.status = transition_status(document.status, DocumentStatus.FAILED)
         document.validation_findings = [
-            _finding(
-                code,
-                FindingSeverity.BLOCKING,
-                "Document processing could not finish",
-                message,
-                action,
+            QualityFinding(
+                code=code,
+                category=FindingCategory.EXTRACTION_QUALITY,
+                severity=FindingSeverity.BLOCKING,
+                confidence=1,
+                title="Document processing could not finish",
+                explanation=message,
+                suggested_action=action,
             ).model_dump()
         ]
         document.updated_at = now_utc()
@@ -217,74 +230,3 @@ class DocumentIngestionService:
                     "We could not reliably read this PDF.",
                     "Upload a clean, digitally generated PDF.",
                 ) from error
-
-    def _validate_extracted_text(
-        self, text: str, title: str
-    ) -> tuple[list[ValidationFinding], list[str]]:
-        normalized = re.sub(r"\s+", " ", text).strip()
-        if not normalized:
-            raise DomainError(
-                "EMPTY_DOCUMENT",
-                "This document does not contain readable text.",
-                "Upload a document with selectable text.",
-            )
-        if len(re.sub(r"\W", "", normalized)) < self.settings.min_meaningful_characters:
-            raise DomainError(
-                "INSUFFICIENT_CONTENT",
-                "This document does not contain enough useful text.",
-                "Upload a document with at least 50 meaningful characters.",
-            )
-
-        lower_text = normalized.lower()
-        words = re.findall(r"[a-zA-Z]+", lower_text)
-        english_hits = sum(word in ENGLISH_MARKERS for word in words)
-        if len(words) < 10 or english_hits == 0:
-            raise DomainError(
-                "UNSUPPORTED_LANGUAGE",
-                "This document does not appear to be English-language content.",
-                "Upload an English GenAI learning resource.",
-            )
-
-        topics = [
-            topic
-            for topic, keywords in TOPIC_KEYWORDS.items()
-            if any(keyword in lower_text for keyword in keywords)
-        ]
-        if not topics:
-            raise DomainError(
-                "NON_GENAI_CONTENT",
-                "This document does not appear to be about Generative AI.",
-                (
-                    "Upload a GenAI learning resource, such as material about LLMs, RAG, "
-                    "embeddings, or agents."
-                ),
-            )
-
-        findings: list[ValidationFinding] = []
-        if not title.strip():
-            findings.append(
-                _finding(
-                    "MISSING_TITLE",
-                    FindingSeverity.WARNING,
-                    "Title is missing",
-                    "A title makes this knowledge easier to identify.",
-                    "Add a clear title before publishing.",
-                )
-            )
-        findings.append(
-            _finding(
-                "GENAI_RELEVANT",
-                FindingSeverity.INFO,
-                "GenAI relevance confirmed",
-                "The document matches supported Generative AI topics.",
-            )
-        )
-        return findings, topics
-
-    @staticmethod
-    def _route(findings: list[ValidationFinding]) -> DocumentStatus:
-        if any(finding.severity is FindingSeverity.BLOCKING for finding in findings):
-            return DocumentStatus.REJECTED
-        if any(finding.severity is FindingSeverity.WARNING for finding in findings):
-            return DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
-        return DocumentStatus.APPROVED

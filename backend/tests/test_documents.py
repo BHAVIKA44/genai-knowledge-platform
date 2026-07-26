@@ -34,14 +34,14 @@ def test_whitespace_only_document_fails_safely(service) -> None:
     content = b" " * 100
     document = service.submit("empty.txt", content, "text/plain", "Empty")
     service.process(document.id, content)
-    assert service.session.get(KnowledgeDocument, document.id).status is DocumentStatus.FAILED
+    assert service.session.get(KnowledgeDocument, document.id).status is DocumentStatus.REJECTED
 
 
 def test_short_document_fails_safely(service) -> None:
     content = b"LLM prompt"
     document = service.submit("short.txt", content, "text/plain", "Short")
     service.process(document.id, content)
-    assert service.session.get(KnowledgeDocument, document.id).status is DocumentStatus.FAILED
+    assert service.session.get(KnowledgeDocument, document.id).status is DocumentStatus.REJECTED
 
 
 def test_unsupported_extension_is_rejected(service) -> None:
@@ -83,7 +83,7 @@ def test_non_genai_content_fails_safely(service) -> None:
     )
     document = service.submit("garden.txt", content, "text/plain", "Garden")
     service.process(document.id, content)
-    assert service.session.get(KnowledgeDocument, document.id).status is DocumentStatus.FAILED
+    assert service.session.get(KnowledgeDocument, document.id).status is DocumentStatus.REJECTED
 
 
 def test_parser_failure_never_exposes_internal_exception(service, monkeypatch) -> None:
