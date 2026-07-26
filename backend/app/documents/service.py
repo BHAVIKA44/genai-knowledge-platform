@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 from app.core.config import Settings
 from app.core.errors import DomainError
 from app.documents.models import DocumentStatus, DocumentType, KnowledgeDocument, now_utc
+from app.documents.source_storage import LocalSourceStorage
 from app.documents.state import transition_status
 from app.knowledge_quality.engine import KnowledgeQualityEngine, ValidatorExecutionError
 from app.knowledge_quality.models import (
@@ -46,11 +47,13 @@ class DocumentIngestionService:
         settings: Settings,
         quality_engine: KnowledgeQualityEngine | None = None,
         analysis_client: GeminiKnowledgeClient | None = None,
+        source_storage: LocalSourceStorage | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
         self.quality_engine = quality_engine or KnowledgeQualityEngine(settings)
         self.analysis_client = analysis_client or GeminiKnowledgeClient(settings)
+        self.source_storage = source_storage or LocalSourceStorage(settings.source_storage_root)
 
     def submit(
         self, filename: str, content: bytes, declared_mime: str | None, title: str | None
@@ -69,17 +72,24 @@ class DocumentIngestionService:
             )
 
         display_name = Path(filename).name or "uploaded-document"
+        source_key = self.source_storage.save(content, Path(display_name).suffix)
         document = KnowledgeDocument(
             title=title.strip() if title and title.strip() else "",
             source_filename=display_name,
             storage_filename=f"{uuid4()}{Path(display_name).suffix.lower()}",
+            source_storage_key=source_key,
             document_type=document_type,
             status=DocumentStatus.UPLOADED,
             sha256=digest,
         )
-        self.session.add(document)
-        self.session.commit()
-        self.session.refresh(document)
+        try:
+            self.session.add(document)
+            self.session.commit()
+            self.session.refresh(document)
+        except Exception:
+            self.session.rollback()
+            self.source_storage.delete(source_key)
+            raise
         return document
 
     def process(self, document_id: str, content: bytes) -> None:
