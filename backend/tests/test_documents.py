@@ -81,7 +81,7 @@ def test_analysis_is_persisted_without_changing_deterministic_routing(
             "requires_external_verification": False,
         }
     ]
-    assert stored.analysis_model == "gemini-2.5-flash"
+    assert stored.analysis_model == "gemini-3.6-flash"
     assert stored.analysis_prompt_version == "v1"
     assert stored.analyzed_at is not None
     assert analysis_client.calls == 1
@@ -110,7 +110,15 @@ def test_missing_title_review_status_and_filename_correction_are_preserved(
     assert analysis_client.calls == 1
 
 
-def test_analysis_failure_uses_safe_processing_failure(service, analysis_client) -> None:
+def test_analysis_failure_uses_safe_processing_failure(
+    service, analysis_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log_events: list[tuple[str, dict[str, object]]] = []
+
+    def capture_error(event: str, **values: object) -> None:
+        log_events.append((event, values))
+
+    monkeypatch.setattr("app.documents.service.logger.error", capture_error)
     analysis_client.analysis = GeminiTimeoutError("provider timeout detail")
     document = service.submit("rag.txt", VALID_GENAI_TEXT, "text/plain", "RAG")
     service.process(document.id, VALID_GENAI_TEXT)
@@ -120,6 +128,9 @@ def test_analysis_failure_uses_safe_processing_failure(service, analysis_client)
     assert finding["code"] == "ANALYSIS_FAILED"
     assert "provider" not in str(finding).lower()
     assert stored.analysis_summary is None
+    assert log_events[0][0] == "document_analysis_failed"
+    assert "provider timeout detail" not in str(log_events)
+    assert VALID_GENAI_TEXT.decode() not in str(log_events)
 
 
 def test_analysis_persistence_failure_rolls_back_analysis_fields(
@@ -151,7 +162,7 @@ def test_document_response_exposes_nested_analysis_contract(service) -> None:
     response = to_response(service.session.get(KnowledgeDocument, document.id))
     assert response.analysis is not None
     assert response.analysis.summary == "A concise explanation of the document."
-    assert response.analysis.model == "gemini-2.5-flash"
+    assert response.analysis.model == "gemini-3.6-flash"
 
 
 def test_unanalyzed_document_response_has_null_analysis(service) -> None:

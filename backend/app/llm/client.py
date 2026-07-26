@@ -159,6 +159,13 @@ class GeminiKnowledgeClient:
 
     @staticmethod
     def _classify_provider_error(error: Exception) -> Exception:
+        status_code = getattr(error, "code", None)
+        if status_code in {400, 401, 403, 404}:
+            return GeminiConfigurationError("Gemini provider configuration is invalid.")
+        if status_code == 429:
+            return GeminiRateLimitError("Gemini rate limit reached.")
+        if isinstance(status_code, int) and status_code >= 500:
+            return GeminiTransientError("Gemini request failed.")
         message = str(error).lower()
         if "rate" in message or "quota" in message or "429" in message:
             return GeminiRateLimitError("Gemini rate limit reached.")

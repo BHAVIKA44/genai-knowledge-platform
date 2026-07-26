@@ -182,8 +182,12 @@ class DocumentIngestionService:
                 "We could not finish analyzing this resource right now.",
                 "Please try again shortly.",
             )
-        except Exception:
-            logger.exception("document_processing_failed", document_id=document_id)
+        except Exception as error:
+            logger.error(
+                "document_processing_failed",
+                document_id=document_id,
+                failure_category=type(error).__name__,
+            )
             self._fail(
                 document_id,
                 "PROCESSING_FAILED",
@@ -196,7 +200,7 @@ class DocumentIngestionService:
         try:
             return self.analysis_client.analyze_document(text)
         except Exception as error:
-            logger.exception(
+            logger.error(
                 "document_analysis_failed",
                 document_id=document.id,
                 model=self.analysis_client.model,

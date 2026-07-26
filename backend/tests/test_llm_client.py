@@ -59,6 +59,12 @@ def test_rate_limit_is_classified_without_provider_details() -> None:
     assert "quota" not in str(error).lower()
 
 
+def test_unavailable_model_is_non_retryable_configuration_error() -> None:
+    provider_error = type("ProviderError", (Exception,), {"code": 404})()
+    error = GeminiKnowledgeClient._classify_provider_error(provider_error)
+    assert isinstance(error, GeminiConfigurationError)
+
+
 class Response:
     def __init__(self, text: str | None) -> None:
         self.text = text
