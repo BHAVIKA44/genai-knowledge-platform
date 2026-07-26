@@ -201,8 +201,8 @@ def test_non_genai_content_fails_safely(service) -> None:
 
 def test_parser_failure_never_exposes_internal_exception(service, monkeypatch) -> None:
     monkeypatch.setattr(
-        service,
-        "_extract_text",
+        service.stored_document_parser,
+        "parse",
         lambda *_args: (_ for _ in ()).throw(RuntimeError("hidden detail")),
     )
     document = service.submit("notes.txt", VALID_GENAI_TEXT, "text/plain", "Notes")
@@ -242,7 +242,7 @@ def test_supported_pdf_is_extracted_with_docling(service, monkeypatch) -> None:
         def convert(self, _: str) -> ConversionResult:
             return ConversionResult()
 
-    monkeypatch.setattr("app.documents.service.DocumentConverter", Converter)
+    monkeypatch.setattr("app.documents.stored_document_parser.DocumentConverter", Converter)
     pdf = fitz.open()
     pdf.new_page().insert_text((72, 72), "Digital PDF")
     content = pdf.tobytes()

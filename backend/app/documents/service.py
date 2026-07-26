@@ -1,5 +1,4 @@
 import hashlib
-import tempfile
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -7,7 +6,6 @@ from uuid import uuid4
 import filetype
 import fitz
 import structlog
-from docling.document_converter import DocumentConverter
 from sqlmodel import Session, select
 
 from app.core.config import Settings
@@ -15,6 +13,7 @@ from app.core.errors import DomainError
 from app.documents.models import DocumentStatus, DocumentType, KnowledgeDocument, now_utc
 from app.documents.source_storage import LocalSourceStorage
 from app.documents.state import transition_status
+from app.documents.stored_document_parser import StoredDocumentParser
 from app.knowledge_quality.engine import KnowledgeQualityEngine, ValidatorExecutionError
 from app.knowledge_quality.models import (
     FindingCategory,
@@ -54,6 +53,7 @@ class DocumentIngestionService:
         self.quality_engine = quality_engine or KnowledgeQualityEngine(settings)
         self.analysis_client = analysis_client or GeminiKnowledgeClient(settings)
         self.source_storage = source_storage or LocalSourceStorage(settings.source_storage_root)
+        self.stored_document_parser = StoredDocumentParser(self.source_storage)
 
     def submit(
         self, filename: str, content: bytes, declared_mime: str | None, title: str | None
@@ -102,7 +102,10 @@ class DocumentIngestionService:
             self.session.add(document)
             self.session.commit()
 
-            text = self._extract_text(document.document_type, document.source_filename, content)
+            parsed_document = self.stored_document_parser.parse(
+                document.source_storage_key, document.document_type
+            )
+            text = parsed_document.text
             quality_result = self.quality_engine.validate(
                 QualityValidationInput(
                     title=document.title,
@@ -305,27 +308,3 @@ class DocumentIngestionService:
                     "Upload a clean, digitally generated PDF.",
                 ) from error
         return document_type
-
-    def _extract_text(self, document_type: DocumentType, filename: str, content: bytes) -> str:
-        if document_type in {DocumentType.TEXT, DocumentType.MARKDOWN}:
-            try:
-                return content.decode("utf-8")
-            except UnicodeDecodeError as error:
-                raise DomainError(
-                    "UNREADABLE_DOCUMENT",
-                    "This text file could not be read as UTF-8.",
-                    "Save it as a UTF-8 text file and try again.",
-                ) from error
-
-        with tempfile.NamedTemporaryFile(suffix=".pdf") as temporary_file:
-            temporary_file.write(content)
-            temporary_file.flush()
-            try:
-                result = DocumentConverter().convert(temporary_file.name)
-                return result.document.export_to_markdown()
-            except Exception as error:
-                raise DomainError(
-                    "UNREADABLE_DOCUMENT",
-                    "We could not reliably read this PDF.",
-                    "Upload a clean, digitally generated PDF.",
-                ) from error
