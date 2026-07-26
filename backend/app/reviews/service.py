@@ -1,8 +1,15 @@
 from sqlmodel import Session
 
+from app.core.config import get_settings
 from app.core.errors import DomainError
+from app.documents.chunk_repository import DocumentChunkRepository
+from app.documents.chunking import DocumentChunkingService
+from app.documents.indexing import DocumentIndexingService
 from app.documents.models import DocumentStatus, KnowledgeDocument, now_utc
+from app.documents.source_storage import LocalSourceStorage
 from app.documents.state import transition_status
+from app.documents.stored_document_parser import StoredDocumentParser
+from app.embeddings import DocumentEmbedder
 from app.knowledge_quality.models import FindingSeverity, QualityFinding
 
 
@@ -51,8 +58,11 @@ class ContributorReviewService:
                     for item in document.validation_findings
                 )
                 target = DocumentStatus.REJECTED if unresolved_blocking else DocumentStatus.APPROVED
+                if target is DocumentStatus.APPROVED:
+                    self._index(document)
             else:
                 target = DocumentStatus.REJECTED
+                DocumentChunkRepository(self.session).delete_chunks(document.id)
             document.status = transition_status(document.status, target)
             document.contributor_review_decision = action
             document.updated_at = now_utc()
@@ -63,6 +73,16 @@ class ContributorReviewService:
         except Exception:
             self.session.rollback()
             raise
+
+    def _index(self, document: KnowledgeDocument) -> None:
+        settings = get_settings()
+        DocumentIndexingService(
+            self.session,
+            StoredDocumentParser(LocalSourceStorage(settings.source_storage_root)),
+            DocumentChunkingService(),
+            DocumentEmbedder(),
+            DocumentChunkRepository(self.session),
+        ).index(document)
 
     def _get_document(self, document_id: str) -> KnowledgeDocument:
         document = self.session.get(KnowledgeDocument, document_id)
