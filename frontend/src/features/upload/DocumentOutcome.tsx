@@ -1,4 +1,4 @@
-import type { KnowledgeDocument } from "../../api/documents";
+import type { ContributorReviewDetails, KnowledgeDocument } from "../../api/documents";
 
 const labels: Record<KnowledgeDocument["status"], string> = {
   UPLOADED: "Upload accepted",
@@ -11,7 +11,14 @@ const labels: Record<KnowledgeDocument["status"], string> = {
   FAILED: "Processing could not finish",
 };
 
-export function DocumentOutcome({ document }: { document: KnowledgeDocument }) {
+type Props = {
+  document: KnowledgeDocument;
+  review?: ContributorReviewDetails;
+  onDecision?: (action: "ACCEPT" | "DECLINE") => void;
+  isDeciding?: boolean;
+};
+
+export function DocumentOutcome({ document, review, onDecision, isDeciding }: Props) {
   const finished = [
     "APPROVED",
     "CONTRIBUTOR_REVIEW_REQUIRED",
@@ -45,6 +52,33 @@ export function DocumentOutcome({ document }: { document: KnowledgeDocument }) {
           </article>
         ))}
       </div>
+      {review && onDecision && (
+        <div className="mt-6 rounded-xl border border-sky-300/20 bg-sky-300/[0.04] p-4">
+          <p className="font-medium text-white">Review the suggested change</p>
+          <p className="mt-2 text-sm text-slate-400">
+            Original value: {review.finding.original_value || "No title"}
+          </p>
+          <p className="mt-1 text-sm text-sky-100">
+            Suggested value: {review.finding.suggested_value}
+          </p>
+          <div className="mt-4 flex gap-3">
+            <button
+              disabled={isDeciding}
+              onClick={() => onDecision("ACCEPT")}
+              className="rounded-lg bg-sky-300 px-3 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50"
+            >
+              Accept change
+            </button>
+            <button
+              disabled={isDeciding}
+              onClick={() => onDecision("DECLINE")}
+              className="rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Decline upload
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

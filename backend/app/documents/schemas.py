@@ -16,6 +16,7 @@ class DocumentResponse(BaseModel):
     status: DocumentStatus
     detected_topics: list[str]
     validation_findings: list[QualityFinding]
+    contributor_review_decision: str | None
     created_at: datetime
     updated_at: datetime
 

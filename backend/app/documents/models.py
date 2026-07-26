@@ -43,6 +43,7 @@ class KnowledgeDocument(SQLModel, table=True):
     validation_findings: list[dict[str, object]] = Field(
         default_factory=list, sa_column=Column(JSON, nullable=False)
     )
+    contributor_review_decision: str | None = None
     sha256: str = Field(index=True, unique=True)
     created_at: datetime = Field(default_factory=now_utc, nullable=False)
     updated_at: datetime = Field(default_factory=now_utc, nullable=False)

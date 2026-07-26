@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 from app.core.config import Settings
 from app.knowledge_quality.models import (
@@ -34,6 +35,8 @@ class MetadataValidator:
                     title="Title is missing",
                     explanation="A title makes this knowledge easier to identify.",
                     suggested_action="Add a clear title before publishing.",
+                    original_value="",
+                    suggested_value=Path(value.source_filename).stem.replace("_", " ").strip(),
                 )
             ]
         )

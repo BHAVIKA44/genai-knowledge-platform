@@ -18,6 +18,7 @@ from app.knowledge_quality.models import (
 
 VALID_INPUT = QualityValidationInput(
     title="RAG notes",
+    source_filename="rag-notes.md",
     extracted_text=(
         "Large language models use transformer attention. Retrieval augmented generation "
         "uses embeddings and a vector database for grounded answers."

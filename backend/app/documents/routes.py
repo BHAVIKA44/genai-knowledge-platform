@@ -8,6 +8,8 @@ from app.db.session import get_session
 from app.documents.models import KnowledgeDocument
 from app.documents.schemas import DocumentResponse
 from app.documents.service import DocumentIngestionService
+from app.reviews.schemas import ContributorReviewDecision, ContributorReviewDetails
+from app.reviews.service import ContributorReviewService
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -53,4 +55,22 @@ def get_document(document_id: str, session: Session = Depends(get_session)) -> D
             "Return to the upload page and try again.",
             404,
         )
+    return to_response(document)
+
+
+@router.get("/{document_id}/contributor-review", response_model=ContributorReviewDetails)
+def get_contributor_review(
+    document_id: str, session: Session = Depends(get_session)
+) -> ContributorReviewDetails:
+    document, finding = ContributorReviewService(session).get_details(document_id)
+    return ContributorReviewDetails(document=to_response(document), finding=finding)
+
+
+@router.post("/{document_id}/contributor-review", response_model=DocumentResponse)
+def decide_contributor_review(
+    document_id: str,
+    decision: ContributorReviewDecision,
+    session: Session = Depends(get_session),
+) -> DocumentResponse:
+    document = ContributorReviewService(session).decide(document_id, decision.action)
     return to_response(document)

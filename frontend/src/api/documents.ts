@@ -16,6 +16,8 @@ export type Finding = {
   title: string;
   explanation: string;
   suggested_action: string | null;
+  original_value: string | null;
+  suggested_value: string | null;
 };
 
 export type KnowledgeDocument = {
@@ -26,6 +28,7 @@ export type KnowledgeDocument = {
   status: DocumentStatus;
   detected_topics: string[];
   validation_findings: Finding[];
+  contributor_review_decision: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -56,4 +59,21 @@ export function uploadDocument(file: File, title: string): Promise<KnowledgeDocu
 
 export function getDocument(id: string): Promise<KnowledgeDocument> {
   return request<KnowledgeDocument>(`/api/documents/${id}`);
+}
+
+export type ContributorReviewDetails = { document: KnowledgeDocument; finding: Finding };
+
+export function getContributorReview(id: string): Promise<ContributorReviewDetails> {
+  return request<ContributorReviewDetails>(`/api/documents/${id}/contributor-review`);
+}
+
+export function decideContributorReview(
+  id: string,
+  action: "ACCEPT" | "DECLINE",
+): Promise<KnowledgeDocument> {
+  return request<KnowledgeDocument>(`/api/documents/${id}/contributor-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
 }

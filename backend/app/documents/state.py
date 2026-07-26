@@ -20,7 +20,7 @@ ALLOWED_TRANSITIONS: dict[DocumentStatus, set[DocumentStatus]] = {
         DocumentStatus.FAILED,
     },
     DocumentStatus.APPROVED: set(),
-    DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED: set(),
+    DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED: {DocumentStatus.APPROVED, DocumentStatus.REJECTED},
     DocumentStatus.ADMIN_REVIEW_REQUIRED: set(),
     DocumentStatus.REJECTED: set(),
     DocumentStatus.FAILED: set(),

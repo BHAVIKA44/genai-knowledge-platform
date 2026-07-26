@@ -84,6 +84,7 @@ class DocumentIngestionService:
             quality_result = self.quality_engine.validate(
                 QualityValidationInput(
                     title=document.title,
+                    source_filename=document.source_filename,
                     extracted_text=text,
                     document_type=document.document_type,
                 )

@@ -33,10 +33,13 @@ class QualityFinding(BaseModel):
     title: str
     explanation: str
     suggested_action: str | None = None
+    original_value: str | None = None
+    suggested_value: str | None = None
 
 
 class QualityValidationInput(BaseModel):
     title: str
+    source_filename: str
     extracted_text: str
     document_type: DocumentType
     is_exact_duplicate: bool = False
