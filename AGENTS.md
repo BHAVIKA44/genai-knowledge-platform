@@ -1,4 +1,4 @@
-````md
+
 # AGENTS.md
 
 ## Purpose
@@ -2170,5 +2170,4 @@ Before presenting any work as complete, explicitly check:
 
 > Use existing libraries for solved problems. Use deterministic software for orchestration and policy. Use LLMs only for intelligence that ordinary code cannot provide. Keep the architecture simple, the behavior explicit, the failures graceful, and the Knowledge Quality Engine at the center of the project.
 
-```
-```
+
