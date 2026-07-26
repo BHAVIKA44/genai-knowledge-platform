@@ -12,6 +12,7 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "python-multipart>=0.0.18,<1",
   "sqlmodel>=0.0.22,<1",
+  "sentence-transformers==3.4.1",
   "structlog>=24.4,<26",
   "uvicorn[standard]>=0.32,<1",
 ]
