@@ -21,6 +21,34 @@ def test_valid_markdown_upload_becomes_approved(service) -> None:
     assert service.session.get(KnowledgeDocument, document.id).status is DocumentStatus.APPROVED
 
 
+def test_only_approved_upload_invokes_indexing(service, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "app.documents.service.DocumentIndexingService",
+        lambda *_: type("Indexer", (), {"index": lambda _, document: calls.append(document.id)})(),
+    )
+    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "RAG")
+    service.process(document.id, VALID_GENAI_TEXT)
+    assert calls == [document.id]
+
+
+@pytest.mark.parametrize(
+    ("title", "content"),
+    [
+        ("Garden", b"The garden needs sunlight and water for healthy flowers in spring."),
+        (None, VALID_GENAI_TEXT),
+    ],
+)
+def test_non_approved_upload_skips_indexing(service, monkeypatch, title, content) -> None:
+    monkeypatch.setattr(
+        "app.documents.service.DocumentIndexingService",
+        lambda *_: pytest.fail("indexer constructed"),
+    )
+    document = service.submit("notes.txt", content, "text/plain", title)
+    service.process(document.id, content)
+    assert service.session.get(KnowledgeDocument, document.id).status is not DocumentStatus.APPROVED
+
+
 def test_analysis_is_persisted_without_changing_deterministic_routing(
     service, analysis_client
 ) -> None:

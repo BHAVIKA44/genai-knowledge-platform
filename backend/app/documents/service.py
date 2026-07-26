@@ -10,10 +10,14 @@ from sqlmodel import Session, select
 
 from app.core.config import Settings
 from app.core.errors import DomainError
+from app.documents.chunk_repository import DocumentChunkRepository
+from app.documents.chunking import DocumentChunkingService
+from app.documents.indexing import DocumentIndexingService
 from app.documents.models import DocumentStatus, DocumentType, KnowledgeDocument, now_utc
 from app.documents.source_storage import LocalSourceStorage
 from app.documents.state import transition_status
 from app.documents.stored_document_parser import StoredDocumentParser
+from app.embeddings import DocumentEmbedder
 from app.knowledge_quality.engine import KnowledgeQualityEngine, ValidatorExecutionError
 from app.knowledge_quality.models import (
     FindingCategory,
@@ -202,7 +206,18 @@ class DocumentIngestionService:
         document.analysis_model = self.analysis_client.model
         document.analysis_prompt_version = self.analysis_client.prompt_version
         document.analyzed_at = now_utc()
+        if target_status is DocumentStatus.APPROVED:
+            self._index(document)
         self._complete_processing(document, target_status)
+
+    def _index(self, document: KnowledgeDocument) -> None:
+        DocumentIndexingService(
+            self.session,
+            self.stored_document_parser,
+            DocumentChunkingService(),
+            DocumentEmbedder(),
+            DocumentChunkRepository(self.session),
+        ).index(document)
 
     @staticmethod
     def _semantic_findings(analysis: KnowledgeAnalysis) -> list[QualityFinding]:
