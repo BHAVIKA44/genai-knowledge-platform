@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     gemini_timeout_seconds: float = Field(default=20, gt=0)
     gemini_max_retries: int = Field(default=2, ge=0)
     gemini_prompt_version: str = "v1"
+    source_storage_root: str = "./.source-storage"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

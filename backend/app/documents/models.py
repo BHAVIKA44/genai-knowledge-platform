@@ -34,6 +34,7 @@ class KnowledgeDocument(SQLModel, table=True):
     title: str
     source_filename: str
     storage_filename: str
+    source_storage_key: str | None = None
     document_type: DocumentType
     extracted_text: str | None = None
     detected_topics: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))

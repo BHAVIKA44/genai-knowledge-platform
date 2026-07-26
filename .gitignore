@@ -10,4 +10,5 @@ dist/
 coverage/
 .DS_Store
 backend/.model-cache/
+backend/.source-storage/
 *.egg-info/
