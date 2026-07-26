@@ -20,6 +20,23 @@ export type Finding = {
   suggested_value: string | null;
 };
 
+export type AnalysisClaim = {
+  text: string;
+  confidence: number;
+  is_time_sensitive: boolean;
+  requires_external_verification: boolean;
+};
+
+export type DocumentAnalysis = {
+  proposed_title: string | null;
+  summary: string;
+  topics: string[];
+  claims: AnalysisClaim[];
+  model: string;
+  prompt_version: string;
+  analyzed_at: string;
+};
+
 export type KnowledgeDocument = {
   id: string;
   title: string;
@@ -29,6 +46,7 @@ export type KnowledgeDocument = {
   detected_topics: string[];
   validation_findings: Finding[];
   contributor_review_decision: string | null;
+  analysis: DocumentAnalysis | null;
   created_at: string;
   updated_at: string;
 };

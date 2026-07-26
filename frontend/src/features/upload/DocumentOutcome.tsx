@@ -52,6 +52,50 @@ export function DocumentOutcome({ document, review, onDecision, isDeciding }: Pr
           </article>
         ))}
       </div>
+      {document.analysis && (
+        <section className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
+          <p className="font-medium text-white">Knowledge analysis</p>
+          <p className="mt-2 text-sm leading-6 text-slate-300">{document.analysis.summary}</p>
+          {document.analysis.topics.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {document.analysis.topics.map((topic) => (
+                <span
+                  key={topic}
+                  className="rounded-full border border-sky-300/20 bg-sky-300/10 px-2.5 py-1 text-xs text-sky-100"
+                >
+                  {topic}
+                </span>
+              ))}
+            </div>
+          )}
+          {document.analysis.proposed_title && (
+            <p className="mt-3 text-sm text-slate-400">
+              Suggested analysis title: {document.analysis.proposed_title}
+            </p>
+          )}
+          {document.analysis.claims.length > 0 && (
+            <details className="mt-4">
+              <summary className="cursor-pointer text-sm font-medium text-sky-200">
+                Important claims ({document.analysis.claims.length})
+              </summary>
+              <div className="mt-3 space-y-3">
+                {document.analysis.claims.map((claim) => (
+                  <article key={claim.text} className="rounded-lg border border-white/10 p-3">
+                    <p className="text-sm text-slate-200">{claim.text}</p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      Confidence: {Math.round(claim.confidence * 100)}%
+                      {claim.is_time_sensitive ? " · Time-sensitive" : ""}
+                      {claim.requires_external_verification
+                        ? " · May need external verification"
+                        : ""}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </details>
+          )}
+        </section>
+      )}
       {review && onDecision && (
         <div className="mt-6 rounded-xl border border-sky-300/20 bg-sky-300/[0.04] p-4">
           <p className="font-medium text-white">Review the suggested change</p>

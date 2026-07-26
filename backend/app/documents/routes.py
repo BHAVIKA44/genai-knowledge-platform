@@ -6,7 +6,7 @@ from sqlmodel import Session
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
 from app.documents.models import KnowledgeDocument
-from app.documents.schemas import DocumentResponse
+from app.documents.schemas import DocumentAnalysisResponse, DocumentResponse
 from app.documents.service import DocumentIngestionService
 from app.reviews.schemas import ContributorReviewDecision, ContributorReviewDetails
 from app.reviews.service import ContributorReviewService
@@ -15,7 +15,22 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
 def to_response(document: KnowledgeDocument) -> DocumentResponse:
-    return DocumentResponse.model_validate(document)
+    response = DocumentResponse.model_validate(document)
+    if document.analysis_summary is None:
+        return response
+    return response.model_copy(
+        update={
+            "analysis": DocumentAnalysisResponse(
+                proposed_title=document.analysis_proposed_title,
+                summary=document.analysis_summary,
+                topics=document.analysis_topics or [],
+                claims=document.analysis_claims or [],
+                model=document.analysis_model or "",
+                prompt_version=document.analysis_prompt_version or "",
+                analyzed_at=document.analyzed_at or document.updated_at,
+            )
+        }
+    )
 
 
 def process_submission(document_id: str, content: bytes) -> None:

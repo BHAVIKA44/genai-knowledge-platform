@@ -4,7 +4,10 @@ from sqlmodel import select
 
 from app.core.errors import DomainError, InvalidStateTransitionError
 from app.documents.models import DocumentStatus, KnowledgeDocument
+from app.documents.routes import to_response
 from app.documents.state import transition_status
+from app.llm.client import GeminiTimeoutError
+from app.llm.models import KnowledgeAnalysis
 
 VALID_GENAI_TEXT = (
     b"Large language models use transformer attention. Retrieval augmented generation uses "
@@ -16,6 +19,116 @@ def test_valid_markdown_upload_becomes_approved(service) -> None:
     document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "RAG notes")
     service.process(document.id, VALID_GENAI_TEXT)
     assert service.session.get(KnowledgeDocument, document.id).status is DocumentStatus.APPROVED
+
+
+def test_analysis_is_persisted_without_changing_deterministic_routing(
+    service, analysis_client
+) -> None:
+    analysis_client.analysis = KnowledgeAnalysis(
+        proposed_title="Gemini title",
+        summary="Structured summary",
+        topics=["RAG", "LLMs"],
+        claims=[
+            {
+                "text": "RAG uses retrieved context.",
+                "confidence": 0.9,
+                "is_time_sensitive": False,
+                "requires_external_verification": False,
+            }
+        ],
+    )
+    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "Existing title")
+    service.process(document.id, VALID_GENAI_TEXT)
+    stored = service.session.get(KnowledgeDocument, document.id)
+    assert stored.status is DocumentStatus.APPROVED
+    assert stored.title == "Existing title"
+    assert stored.analysis_proposed_title == "Gemini title"
+    assert stored.analysis_summary == "Structured summary"
+    assert stored.analysis_topics == ["RAG", "LLMs"]
+    assert stored.analysis_claims == [
+        {
+            "text": "RAG uses retrieved context.",
+            "confidence": 0.9,
+            "is_time_sensitive": False,
+            "requires_external_verification": False,
+        }
+    ]
+    assert stored.analysis_model == "gemini-2.5-flash"
+    assert stored.analysis_prompt_version == "v1"
+    assert stored.analyzed_at is not None
+    assert analysis_client.calls == 1
+
+
+def test_rejected_document_skips_analysis(service, analysis_client) -> None:
+    content = b"The garden needs water and sunlight for healthy flowers in spring."
+    document = service.submit("garden.txt", content, "text/plain", "Garden")
+    service.process(document.id, content)
+    stored = service.session.get(KnowledgeDocument, document.id)
+    assert stored.status is DocumentStatus.REJECTED
+    assert stored.analysis_summary is None
+    assert analysis_client.calls == 0
+
+
+def test_missing_title_review_status_and_filename_correction_are_preserved(
+    service, analysis_client
+) -> None:
+    document = service.submit("rag_notes.md", VALID_GENAI_TEXT, "text/markdown", None)
+    service.process(document.id, VALID_GENAI_TEXT)
+    stored = service.session.get(KnowledgeDocument, document.id)
+    assert stored.status is DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
+    assert stored.title == ""
+    assert any(finding["suggested_value"] == "rag notes" for finding in stored.validation_findings)
+    assert stored.analysis_proposed_title == "Generated title"
+    assert analysis_client.calls == 1
+
+
+def test_analysis_failure_uses_safe_processing_failure(service, analysis_client) -> None:
+    analysis_client.analysis = GeminiTimeoutError("provider timeout detail")
+    document = service.submit("rag.txt", VALID_GENAI_TEXT, "text/plain", "RAG")
+    service.process(document.id, VALID_GENAI_TEXT)
+    stored = service.session.get(KnowledgeDocument, document.id)
+    finding = stored.validation_findings[0]
+    assert stored.status is DocumentStatus.FAILED
+    assert finding["code"] == "ANALYSIS_FAILED"
+    assert "provider" not in str(finding).lower()
+    assert stored.analysis_summary is None
+
+
+def test_analysis_persistence_failure_rolls_back_analysis_fields(
+    service, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_commit = service.session.commit
+    commits = 0
+
+    def fail_analysis_commit() -> None:
+        nonlocal commits
+        commits += 1
+        if commits == 3:
+            raise RuntimeError("database detail")
+        original_commit()
+
+    monkeypatch.setattr(service.session, "commit", fail_analysis_commit)
+    document = service.submit("rag.txt", VALID_GENAI_TEXT, "text/plain", "RAG")
+    service.process(document.id, VALID_GENAI_TEXT)
+    stored = service.session.get(KnowledgeDocument, document.id)
+    assert stored.status is DocumentStatus.FAILED
+    assert stored.analysis_summary is None
+    assert stored.analysis_topics is None
+    assert stored.analysis_claims is None
+
+
+def test_document_response_exposes_nested_analysis_contract(service) -> None:
+    document = service.submit("rag.txt", VALID_GENAI_TEXT, "text/plain", "RAG")
+    service.process(document.id, VALID_GENAI_TEXT)
+    response = to_response(service.session.get(KnowledgeDocument, document.id))
+    assert response.analysis is not None
+    assert response.analysis.summary == "A concise explanation of the document."
+    assert response.analysis.model == "gemini-2.5-flash"
+
+
+def test_unanalyzed_document_response_has_null_analysis(service) -> None:
+    document = service.submit("rag.txt", VALID_GENAI_TEXT, "text/plain", "RAG")
+    assert to_response(document).analysis is None
 
 
 def test_valid_text_upload_becomes_approved(service) -> None:

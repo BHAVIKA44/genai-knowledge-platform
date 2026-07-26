@@ -44,6 +44,15 @@ class KnowledgeDocument(SQLModel, table=True):
         default_factory=list, sa_column=Column(JSON, nullable=False)
     )
     contributor_review_decision: str | None = None
+    analysis_summary: str | None = None
+    analysis_topics: list[str] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    analysis_claims: list[dict[str, object]] | None = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
+    analysis_proposed_title: str | None = None
+    analysis_model: str | None = None
+    analysis_prompt_version: str | None = None
+    analyzed_at: datetime | None = None
     sha256: str = Field(index=True, unique=True)
     created_at: datetime = Field(default_factory=now_utc, nullable=False)
     updated_at: datetime = Field(default_factory=now_utc, nullable=False)

@@ -17,8 +17,26 @@ class DocumentResponse(BaseModel):
     detected_topics: list[str]
     validation_findings: list[QualityFinding]
     contributor_review_decision: str | None
+    analysis: "DocumentAnalysisResponse | None" = None
     created_at: datetime
     updated_at: datetime
+
+
+class AnalysisClaimResponse(BaseModel):
+    text: str
+    confidence: float
+    is_time_sensitive: bool
+    requires_external_verification: bool
+
+
+class DocumentAnalysisResponse(BaseModel):
+    proposed_title: str | None
+    summary: str
+    topics: list[str]
+    claims: list[AnalysisClaimResponse]
+    model: str
+    prompt_version: str
+    analyzed_at: datetime
 
 
 class ErrorDetail(BaseModel):

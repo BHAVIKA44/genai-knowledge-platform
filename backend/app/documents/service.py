@@ -1,5 +1,6 @@
 import hashlib
 import tempfile
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -20,6 +21,15 @@ from app.knowledge_quality.models import (
     QualityFinding,
     QualityValidationInput,
 )
+from app.llm.client import (
+    GeminiConfigurationError,
+    GeminiInvalidResponseError,
+    GeminiKnowledgeClient,
+    GeminiRateLimitError,
+    GeminiTimeoutError,
+    GeminiTransientError,
+)
+from app.llm.models import KnowledgeAnalysis
 
 SUPPORTED_TYPES: dict[str, tuple[DocumentType, set[str]]] = {
     ".md": (DocumentType.MARKDOWN, {"text/markdown", "text/plain"}),
@@ -35,10 +45,12 @@ class DocumentIngestionService:
         session: Session,
         settings: Settings,
         quality_engine: KnowledgeQualityEngine | None = None,
+        analysis_client: GeminiKnowledgeClient | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
         self.quality_engine = quality_engine or KnowledgeQualityEngine(settings)
+        self.analysis_client = analysis_client or GeminiKnowledgeClient(settings)
 
     def submit(
         self, filename: str, content: bytes, declared_mime: str | None, title: str | None
@@ -103,12 +115,13 @@ class DocumentIngestionService:
             self.session.add(document)
             self.session.commit()
 
-            document.status = transition_status(
-                document.status, DocumentStatus(quality_result.recommended_routing)
-            )
-            document.updated_at = now_utc()
-            self.session.add(document)
-            self.session.commit()
+            target_status = DocumentStatus(quality_result.recommended_routing)
+            if target_status is DocumentStatus.REJECTED:
+                self._complete_processing(document, target_status)
+                return
+
+            analysis = self._analyze(document, text)
+            self._persist_analysis(document, analysis, target_status)
         except DomainError as error:
             self._fail(document_id, error.code, error.message, error.action)
         except ValidatorExecutionError:
@@ -116,6 +129,19 @@ class DocumentIngestionService:
                 document_id,
                 "QUALITY_VALIDATION_FAILED",
                 "We could not validate this document safely.",
+                "Please try again shortly.",
+            )
+        except (
+            GeminiConfigurationError,
+            GeminiInvalidResponseError,
+            GeminiRateLimitError,
+            GeminiTimeoutError,
+            GeminiTransientError,
+        ):
+            self._fail(
+                document_id,
+                "ANALYSIS_FAILED",
+                "We could not finish analyzing this resource right now.",
                 "Please try again shortly.",
             )
         except Exception:
@@ -126,6 +152,44 @@ class DocumentIngestionService:
                 "We could not process this document safely.",
                 "Please try a clean digital PDF or a plain-text file.",
             )
+
+    def _analyze(self, document: KnowledgeDocument, text: str) -> KnowledgeAnalysis:
+        started_at = time.monotonic()
+        try:
+            return self.analysis_client.analyze_document(text)
+        except Exception as error:
+            logger.exception(
+                "document_analysis_failed",
+                document_id=document.id,
+                model=self.analysis_client.model,
+                prompt_version=self.analysis_client.prompt_version,
+                failure_category=type(error).__name__,
+                elapsed_ms=round((time.monotonic() - started_at) * 1000),
+            )
+            raise
+
+    def _persist_analysis(
+        self,
+        document: KnowledgeDocument,
+        analysis: KnowledgeAnalysis,
+        target_status: DocumentStatus,
+    ) -> None:
+        document.analysis_summary = analysis.summary
+        document.analysis_topics = analysis.topics
+        document.analysis_claims = [claim.model_dump() for claim in analysis.claims]
+        document.analysis_proposed_title = analysis.proposed_title
+        document.analysis_model = self.analysis_client.model
+        document.analysis_prompt_version = self.analysis_client.prompt_version
+        document.analyzed_at = now_utc()
+        self._complete_processing(document, target_status)
+
+    def _complete_processing(
+        self, document: KnowledgeDocument, target_status: DocumentStatus
+    ) -> None:
+        document.status = transition_status(document.status, target_status)
+        document.updated_at = now_utc()
+        self.session.add(document)
+        self.session.commit()
 
     def _fail(self, document_id: str, code: str, message: str, action: str | None) -> None:
         self.session.rollback()
