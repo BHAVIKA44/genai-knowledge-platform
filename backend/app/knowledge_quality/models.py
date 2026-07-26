@@ -10,6 +10,7 @@ class FindingCategory(StrEnum):
     EXTRACTION_QUALITY = "EXTRACTION_QUALITY"
     DOMAIN_RELEVANCE = "DOMAIN_RELEVANCE"
     DUPLICATE = "DUPLICATE"
+    SEMANTIC_QUALITY = "SEMANTIC_QUALITY"
 
 
 class FindingSeverity(StrEnum):
@@ -35,6 +36,7 @@ class QualityFinding(BaseModel):
     suggested_action: str | None = None
     original_value: str | None = None
     suggested_value: str | None = None
+    admin_review_required: bool = False
 
 
 class QualityValidationInput(BaseModel):

@@ -8,11 +8,22 @@ class KnowledgeClaim(BaseModel):
     requires_external_verification: bool
 
 
+class SemanticFinding(BaseModel):
+    category: str = Field(min_length=1)
+    severity: str = Field(pattern="^(INFO|WARNING|BLOCKING)$")
+    confidence: float = Field(ge=0, le=1)
+    explanation: str = Field(min_length=1)
+    suggested_improvement: str | None = None
+    contributor_fix_possible: bool
+    admin_review_required: bool
+
+
 class KnowledgeAnalysis(BaseModel):
     proposed_title: str | None = None
     summary: str = Field(min_length=1)
     topics: list[str]
     claims: list[KnowledgeClaim]
+    semantic_findings: list[SemanticFinding] = Field(default_factory=list)
 
     @field_validator("topics")
     @classmethod

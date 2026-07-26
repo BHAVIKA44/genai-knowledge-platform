@@ -31,6 +31,7 @@ def test_confidence_outside_range_is_rejected() -> None:
                         "requires_external_verification": False,
                     }
                 ],
+                "semantic_findings": [],
             }
         )
 
@@ -150,6 +151,7 @@ def test_returned_analysis_contains_only_domain_values(monkeypatch: pytest.Monke
                 "requires_external_verification": False,
             }
         ],
+        "semantic_findings": [],
     }
 
 

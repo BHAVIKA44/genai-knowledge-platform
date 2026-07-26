@@ -121,6 +121,14 @@ class DocumentIngestionService:
                 return
 
             analysis = self._analyze(document, text)
+            semantic_findings = self._semantic_findings(analysis)
+            document.validation_findings.extend(
+                finding.model_dump() for finding in semantic_findings
+            )
+            if any(finding.admin_review_required for finding in semantic_findings):
+                target_status = DocumentStatus.ADMIN_REVIEW_REQUIRED
+            elif semantic_findings and target_status is DocumentStatus.APPROVED:
+                target_status = DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
             self._persist_analysis(document, analysis, target_status)
         except DomainError as error:
             self._fail(document_id, error.code, error.message, error.action)
@@ -182,6 +190,22 @@ class DocumentIngestionService:
         document.analysis_prompt_version = self.analysis_client.prompt_version
         document.analyzed_at = now_utc()
         self._complete_processing(document, target_status)
+
+    @staticmethod
+    def _semantic_findings(analysis: KnowledgeAnalysis) -> list[QualityFinding]:
+        return [
+            QualityFinding(
+                code=f"SEMANTIC_{index}",
+                category=FindingCategory.SEMANTIC_QUALITY,
+                severity=FindingSeverity(finding.severity),
+                confidence=finding.confidence,
+                title=finding.category.replace("_", " ").title(),
+                explanation=finding.explanation,
+                suggested_action=finding.suggested_improvement,
+                admin_review_required=finding.admin_review_required,
+            )
+            for index, finding in enumerate(analysis.semantic_findings, start=1)
+        ]
 
     def _complete_processing(
         self, document: KnowledgeDocument, target_status: DocumentStatus
