@@ -11,6 +11,7 @@ from app.core.errors import DomainError
 from app.db.session import engine
 from app.documents.routes import router as documents_router
 from app.documents.schemas import ErrorDetail, ErrorResponse
+from app.search.routes import router as search_router
 
 settings = get_settings()
 app = FastAPI(title="GenAI Knowledge Platform API")
@@ -21,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(documents_router)
+app.include_router(search_router)
 
 
 def error_response(
