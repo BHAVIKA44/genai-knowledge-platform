@@ -2,7 +2,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from docling.document_converter import DocumentConverter
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types.doc.document import DoclingDocument
 from docling_core.types.doc.labels import DocItemLabel
 
@@ -50,7 +52,17 @@ class StoredDocumentParser:
                 with tempfile.NamedTemporaryFile(suffix=".pdf") as source_file:
                     source_file.write(content)
                     source_file.flush()
-                    document = DocumentConverter().convert(source_file.name).document
+                    document = (
+                        DocumentConverter(
+                            format_options={
+                                InputFormat.PDF: PdfFormatOption(
+                                    pipeline_options=PdfPipelineOptions(do_ocr=False)
+                                )
+                            }
+                        )
+                        .convert(source_file.name)
+                        .document
+                    )
                 return StoredDocumentParseResult(
                     text=document.export_to_markdown(), document=document
                 )

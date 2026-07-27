@@ -23,9 +23,7 @@ def service(monkeypatch: pytest.MonkeyPatch, chunks: list[object]) -> DocumentCh
     monkeypatch.setattr(
         "app.documents.chunking.HuggingFaceTokenizer", lambda tokenizer: SimpleNamespace()
     )
-    monkeypatch.setattr(
-        "app.documents.chunking.HybridChunker", lambda tokenizer: SimpleNamespace()
-    )
+    monkeypatch.setattr("app.documents.chunking.HybridChunker", lambda tokenizer: SimpleNamespace())
     instance = DocumentChunkingService()
     instance.chunker = SimpleNamespace(chunk=lambda _: iter(chunks))
     return instance

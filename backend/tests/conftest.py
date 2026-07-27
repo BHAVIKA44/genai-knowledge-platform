@@ -7,7 +7,7 @@ from app.llm.models import KnowledgeAnalysis
 
 
 class FakeAnalysisClient:
-    model = "gemini-2.5-flash"
+    model = "gemini-3.6-flash"
     prompt_version = "v1"
 
     def __init__(self, analysis: KnowledgeAnalysis | Exception | None = None) -> None:

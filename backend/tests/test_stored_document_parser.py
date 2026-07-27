@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from docling.datamodel.base_models import InputFormat
 
 from app.documents.models import DocumentType
 from app.documents.source_storage import LocalSourceStorage
@@ -17,13 +18,18 @@ def test_stored_pdf_returns_markdown_and_document(
     storage = LocalSourceStorage(str(tmp_path))
     key = storage.save(b"pdf", ".pdf")
     document = SimpleNamespace(export_to_markdown=lambda: "# Parsed")
-    monkeypatch.setattr(
-        "app.documents.stored_document_parser.DocumentConverter",
-        lambda: SimpleNamespace(convert=lambda _: SimpleNamespace(document=document)),
-    )
+    converter_options = {}
+
+    def fake_converter(**options):
+        converter_options.update(options)
+        return SimpleNamespace(convert=lambda _: SimpleNamespace(document=document))
+
+    monkeypatch.setattr("app.documents.stored_document_parser.DocumentConverter", fake_converter)
     result = StoredDocumentParser(storage).parse(key, DocumentType.PDF)
     assert result.text == "# Parsed"
     assert result.document is document
+    pipeline_options = converter_options["format_options"][InputFormat.PDF].pipeline_options
+    assert pipeline_options.do_ocr is False
 
 
 def test_stored_text_and_markdown_preserve_content(tmp_path) -> None:

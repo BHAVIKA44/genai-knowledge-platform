@@ -279,6 +279,9 @@ def test_supported_pdf_is_extracted_with_docling(service, monkeypatch) -> None:
         document = ExtractedDocument()
 
     class Converter:
+        def __init__(self, **_: object) -> None:
+            pass
+
         def convert(self, _: str) -> ConversionResult:
             return ConversionResult()
 
