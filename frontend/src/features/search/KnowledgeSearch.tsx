@@ -1,13 +1,12 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { ArrowUpRight, Search } from "lucide-react";
 import { searchKnowledge } from "../../api/search";
 
 export function KnowledgeSearch() {
   const [query, setQuery] = useState("");
   const search = useMutation({ mutationFn: searchKnowledge });
-  const results = [...(search.data ?? [])].sort(
-    (left, right) => right.final_score - left.final_score,
-  );
+  const results = search.data ?? [];
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -15,57 +14,71 @@ export function KnowledgeSearch() {
   }
 
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
-      <p className="text-sm font-medium uppercase tracking-[0.2em] text-sky-200">
-        Search knowledge
-      </p>
-      <h2 className="mt-2 text-2xl font-semibold">Find approved learning resources</h2>
-      <form className="mt-5 flex flex-col gap-3 sm:flex-row" onSubmit={submit}>
+    <div className="trusted-search">
+      <div className="search-heading">
+        <p className="section-kicker">Your knowledge library</p>
+        <h2 id="search-heading">
+          Search what <em>you trust.</em>
+        </h2>
+        <p>Explore resources that have already been reviewed and accepted.</p>
+      </div>
+      <form className="trusted-search-form" onSubmit={submit}>
+        <label htmlFor="knowledge-search" className="sr-only">
+          Search trusted knowledge
+        </label>
+        <Search size={21} aria-hidden="true" />
         <input
+          id="knowledge-search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none focus:border-sky-300"
-          placeholder="Search GenAI knowledge"
-          aria-label="Search approved knowledge"
+          placeholder="Search Generative AI topics, concepts, or techniques"
         />
-        <button
-          disabled={search.isPending || !query.trim()}
-          className="rounded-xl bg-sky-300 px-5 py-2 font-semibold text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-50"
-        >
+        <button disabled={search.isPending || !query.trim()} className="button button-primary">
           {search.isPending ? "Searching…" : "Search"}
         </button>
       </form>
+
+      {search.isIdle && (
+        <div className="search-empty-state">
+          <Search size={20} aria-hidden="true" />
+          <p>Your reviewed resources will appear here when they are ready to search.</p>
+        </div>
+      )}
       {search.isPending && (
-        <p className="mt-4 text-sm text-slate-400" role="status">
-          Searching approved knowledge…
-        </p>
+        <div className="search-loading" role="status">
+          <p>Searching your knowledge…</p>
+          <span />
+          <span />
+          <span />
+        </div>
       )}
       {search.isError && (
-        <p className="mt-4 rounded-xl border border-red-300/20 bg-red-300/10 p-4 text-sm text-red-100">
-          {search.error.message}
+        <p className="safe-error" role="alert">
+          We could not search your knowledge right now. Please try again.
         </p>
       )}
       {search.isSuccess && results.length === 0 && (
-        <p className="mt-4 text-sm text-slate-400">No approved knowledge found.</p>
-      )}
-      {results.length > 0 && (
-        <div className="mt-5 space-y-3">
-          {results.map((result) => (
-            <article
-              key={result.document_id}
-              className="rounded-xl border border-white/10 bg-black/20 p-4"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <h3 className="font-medium text-white">{result.title}</h3>
-                <span className="shrink-0 text-sm text-sky-200">
-                  {Math.round(result.final_score * 100)}%
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-400">{result.snippet}</p>
-            </article>
-          ))}
+        <div className="search-empty-state search-no-results">
+          <p>No approved knowledge found.</p>
+          <span>Try a broader topic or add a resource to your knowledge base.</span>
         </div>
       )}
-    </section>
+      {results.length > 0 && (
+        <ol className="trusted-results" aria-label="Trusted knowledge search results">
+          {results.map((result) => (
+            <li key={result.document_id}>
+              <article>
+                <div className="result-topline">
+                  <span>Reviewed resource</span>
+                  <ArrowUpRight size={15} aria-hidden="true" />
+                </div>
+                <h3>{result.title}</h3>
+                <p>{result.snippet}</p>
+              </article>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }

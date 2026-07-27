@@ -1,18 +1,67 @@
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Check, ChevronRight, Clock3, FileText } from "lucide-react";
+import type { ReactNode } from "react";
 import type {
   ContributorReviewDetails,
   GroundedClaimVerification,
   KnowledgeDocument,
 } from "../../api/documents";
 
-const labels: Record<KnowledgeDocument["status"], string> = {
-  UPLOADED: "Upload accepted",
-  PROCESSING: "Extracting content",
-  VALIDATING: "Checking knowledge quality",
-  APPROVED: "Approved for the knowledge base",
-  CONTRIBUTOR_REVIEW_REQUIRED: "Your input is needed",
-  ADMIN_REVIEW_REQUIRED: "Manual review required",
-  REJECTED: "Not published",
-  FAILED: "Processing could not finish",
+type Props = {
+  document: KnowledgeDocument;
+  review?: ContributorReviewDetails;
+  onDecision?: (action: "ACCEPT" | "DECLINE") => void;
+  isDeciding?: boolean;
+};
+
+type Outcome = {
+  title: string;
+  description: string;
+  tone: "approved" | "review" | "attention" | "rejected" | "failed" | "working";
+};
+
+const outcomes: Record<KnowledgeDocument["status"], Outcome> = {
+  UPLOADED: {
+    title: "Your resource is in review",
+    description: "We’ve received it and are preparing to understand the content.",
+    tone: "working",
+  },
+  PROCESSING: {
+    title: "We’re reviewing your content",
+    description: "Reading carefully. No rubber stamps here.",
+    tone: "working",
+  },
+  VALIDATING: {
+    title: "We’re preparing your decision",
+    description: "Checking clarity, relevance, and what may need more attention.",
+    tone: "working",
+  },
+  APPROVED: {
+    title: "Added to your knowledge base",
+    description: "This resource is ready to find when you search your trusted knowledge.",
+    tone: "approved",
+  },
+  CONTRIBUTOR_REVIEW_REQUIRED: {
+    title: "Your review is needed",
+    description: "A small decision from you will help finish this resource’s review.",
+    tone: "review",
+  },
+  ADMIN_REVIEW_REQUIRED: {
+    title: "Needs further review",
+    description: "This resource needs a closer look before it can be added to the knowledge base.",
+    tone: "attention",
+  },
+  REJECTED: {
+    title: "Not added to your knowledge base",
+    description: "This resource was kept out so your library stays useful and trustworthy.",
+    tone: "rejected",
+  },
+  FAILED: {
+    title: "We could not complete the review",
+    description:
+      "Please try again shortly. Your resource has not been added to the knowledge base.",
+    tone: "failed",
+  },
 };
 
 const verificationLabels: Record<GroundedClaimVerification["verdict"], string> = {
@@ -22,167 +71,269 @@ const verificationLabels: Record<GroundedClaimVerification["verdict"], string> =
   INSUFFICIENT_EVIDENCE: "Not enough evidence",
 };
 
-type Props = {
-  document: KnowledgeDocument;
-  review?: ContributorReviewDetails;
-  onDecision?: (action: "ACCEPT" | "DECLINE") => void;
-  isDeciding?: boolean;
-};
+const progress = [
+  ["Resource received", "received"],
+  ["Understanding the content", "processing"],
+  ["Reviewing clarity and relevance", "validating"],
+  ["Preparing the decision", "decision"],
+  ["Adding approved knowledge", "approved"],
+] as const;
+
+function progressState(status: KnowledgeDocument["status"], stage: (typeof progress)[number][1]) {
+  const index = progress.findIndex(([, id]) => id === stage);
+  const activeIndex =
+    status === "UPLOADED" ? 0 : status === "PROCESSING" ? 1 : status === "VALIDATING" ? 2 : 4;
+  if (
+    ["CONTRIBUTOR_REVIEW_REQUIRED", "ADMIN_REVIEW_REQUIRED", "REJECTED", "FAILED"].includes(status)
+  ) {
+    return index < 4 ? "complete" : "skipped";
+  }
+  if (index < activeIndex) return "complete";
+  if (index === activeIndex) return status === "APPROVED" ? "complete" : "active";
+  return "pending";
+}
 
 export function DocumentOutcome({ document, review, onDecision, isDeciding }: Props) {
-  const finished = [
-    "APPROVED",
-    "CONTRIBUTOR_REVIEW_REQUIRED",
-    "ADMIN_REVIEW_REQUIRED",
-    "REJECTED",
-    "FAILED",
-  ].includes(document.status);
+  const reducedMotion = useReducedMotion();
+  const outcome = outcomes[document.status];
+  const final = !["UPLOADED", "PROCESSING", "VALIDATING"].includes(document.status);
+  const informationalFindings = document.validation_findings.filter(
+    (finding) => finding.severity === "INFO",
+  );
+  const actionableFindings = document.validation_findings.filter(
+    (finding) => finding.severity !== "INFO",
+  );
+
   return (
-    <section aria-live="polite" className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
-      <p className="text-sm font-medium uppercase tracking-[0.2em] text-sky-200">
-        Knowledge quality
-      </p>
-      <h2 className="mt-2 text-2xl font-semibold">{labels[document.status]}</h2>
-      <p className="mt-2 text-slate-400">
-        {document.source_filename}
-        {document.detected_topics.length ? ` · ${document.detected_topics.join(", ")}` : ""}
-      </p>
-      {!finished && (
-        <p className="mt-6 text-sm text-slate-300">
-          This may take a moment. We will update this result as each real stage completes.
-        </p>
-      )}
-      <div className="mt-6 space-y-3">
-        {document.validation_findings.map((finding) => (
-          <article key={finding.code} className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <p className="font-medium text-white">{finding.title}</p>
-            <p className="mt-1 text-sm text-slate-400">{finding.explanation}</p>
-            {finding.suggested_action && (
-              <p className="mt-2 text-sm text-sky-200">{finding.suggested_action}</p>
+    <motion.section
+      className={`decision-report tone-${outcome.tone}`}
+      aria-live="polite"
+      initial={{ opacity: 0, y: reducedMotion ? 0 : 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reducedMotion ? 0 : 0.35 }}
+    >
+      <header className="decision-hero">
+        <div>
+          <p className="report-label">{final ? "Review complete" : "Review in progress"}</p>
+          <h2>{outcome.title}</h2>
+          <p>{outcome.description}</p>
+        </div>
+        <div className="document-meta">
+          <FileText size={16} aria-hidden="true" />
+          <span>{document.source_filename}</span>
+        </div>
+      </header>
+
+      {!final && <ReviewProgress status={document.status} />}
+
+      <AnimatePresence mode="wait">
+        {final && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: reducedMotion ? 0 : 0.3 }}
+          >
+            {document.analysis && (
+              <ReportSection title="What this resource covers">
+                <p className="report-summary">{document.analysis.summary}</p>
+                {document.analysis.topics.length > 0 && (
+                  <div className="topic-list" aria-label="Topics in this resource">
+                    {document.analysis.topics.map((topic) => (
+                      <span key={topic}>{topic}</span>
+                    ))}
+                  </div>
+                )}
+              </ReportSection>
             )}
-          </article>
-        ))}
+
+            {informationalFindings.length > 0 && (
+              <ReportSection title="What we found">
+                <FindingsSection findings={informationalFindings} />
+              </ReportSection>
+            )}
+
+            {actionableFindings.length > 0 && (
+              <ReportSection title="What needs attention">
+                <p className="report-intro">
+                  These are the points that influenced the decision for this resource.
+                </p>
+                <FindingsSection findings={actionableFindings} compact />
+              </ReportSection>
+            )}
+
+            {document.analysis?.claims.length ? (
+              <ReportSection title="Important ideas">
+                <div className="idea-list">
+                  {document.analysis.claims.map((claim) => (
+                    <article key={claim.text}>
+                      <p>{claim.text}</p>
+                    </article>
+                  ))}
+                </div>
+              </ReportSection>
+            ) : null}
+
+            {document.grounded_claim_verifications?.length ? (
+              <ReportSection title="External references">
+                <EvidenceSection verifications={document.grounded_claim_verifications} />
+              </ReportSection>
+            ) : null}
+
+            {review && onDecision ? (
+              <ContributorReviewPanel
+                review={review}
+                onDecision={onDecision}
+                isDeciding={isDeciding}
+              />
+            ) : (
+              <ReportSection title="What happens next">
+                <p className="report-intro">
+                  {document.status === "APPROVED"
+                    ? "This resource is now available when you search your trusted knowledge."
+                    : document.status === "ADMIN_REVIEW_REQUIRED"
+                      ? "No action is needed from you right now. This resource will stay out of search until a closer review is complete."
+                      : document.status === "REJECTED"
+                        ? "You can return with a clearer or more relevant GenAI learning resource whenever you are ready."
+                        : "Please try this resource again shortly. It has not been added to search."}
+                </p>
+              </ReportSection>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.section>
+  );
+}
+
+function ReviewProgress({ status }: { status: KnowledgeDocument["status"] }) {
+  return (
+    <section className="review-progress" aria-label="Resource review progress">
+      <div className="progress-heading">
+        <Clock3 size={16} aria-hidden="true" />
+        <p>We’ll update this report as the review moves forward.</p>
       </div>
-      {document.analysis && (
-        <section className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
-          <p className="font-medium text-white">Knowledge analysis</p>
-          <p className="mt-2 text-sm leading-6 text-slate-300">{document.analysis.summary}</p>
-          {document.analysis.topics.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {document.analysis.topics.map((topic) => (
-                <span
-                  key={topic}
-                  className="rounded-full border border-sky-300/20 bg-sky-300/10 px-2.5 py-1 text-xs text-sky-100"
-                >
-                  {topic}
-                </span>
-              ))}
-            </div>
-          )}
-          {document.analysis.proposed_title && (
-            <p className="mt-3 text-sm text-slate-400">
-              Suggested analysis title: {document.analysis.proposed_title}
-            </p>
-          )}
-          {document.analysis.claims.length > 0 && (
-            <details className="mt-4">
-              <summary className="cursor-pointer text-sm font-medium text-sky-200">
-                Important claims ({document.analysis.claims.length})
-              </summary>
-              <div className="mt-3 space-y-3">
-                {document.analysis.claims.map((claim) => (
-                  <article key={claim.text} className="rounded-lg border border-white/10 p-3">
-                    <p className="text-sm text-slate-200">{claim.text}</p>
-                    <p className="mt-2 text-xs text-slate-400">
-                      Confidence: {Math.round(claim.confidence * 100)}%
-                      {claim.is_time_sensitive ? " · Time-sensitive" : ""}
-                      {claim.requires_external_verification
-                        ? " · May need external verification"
-                        : ""}
-                    </p>
-                  </article>
+      <ol>
+        {progress.map(([label, id]) => {
+          const state = progressState(status, id);
+          return (
+            <li className={`progress-${state}`} key={id}>
+              <span aria-hidden="true">{state === "complete" ? <Check size={12} /> : ""}</span>
+              <p>{label}</p>
+              {state === "active" && <small>In progress</small>}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function ReportSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="report-section">
+      <h3>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function FindingsSection({
+  findings,
+  compact = false,
+}: {
+  findings: KnowledgeDocument["validation_findings"];
+  compact?: boolean;
+}) {
+  return (
+    <div className={`findings-list${compact ? " compact" : ""}`}>
+      {findings.map((finding) => (
+        <article key={finding.code}>
+          <span
+            className={`finding-marker severity-${finding.severity.toLowerCase()}`}
+            aria-hidden="true"
+          />
+          <div>
+            <h4>{finding.title}</h4>
+            <p>{finding.explanation}</p>
+            {finding.suggested_action && <small>{finding.suggested_action}</small>}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function EvidenceSection({ verifications }: { verifications: GroundedClaimVerification[] }) {
+  return (
+    <div className="evidence-list">
+      {verifications.map((verification) => (
+        <article key={`${verification.claim}-${verification.verified_at}`}>
+          <p className="evidence-claim">{verification.claim}</p>
+          <p className="evidence-verdict">{verificationLabels[verification.verdict]}</p>
+          <p className="evidence-explanation">{verification.explanation}</p>
+          {verification.evidence_sources.length > 0 && (
+            <details>
+              <summary>View supporting sources ({verification.evidence_sources.length})</summary>
+              <ul>
+                {verification.evidence_sources.map((source) => (
+                  <li key={source.url}>
+                    <a href={source.url} target="_blank" rel="noreferrer noopener">
+                      {source.title || source.domain || "Reference source"}
+                    </a>
+                    {source.domain && <span>{source.domain}</span>}
+                    {source.summary && <p>{source.summary}</p>}
+                  </li>
                 ))}
-              </div>
+              </ul>
             </details>
           )}
-        </section>
-      )}
-      {document.grounded_claim_verifications?.length ? (
-        <section className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
-          <p className="font-medium text-white">External claim verification</p>
-          <div className="mt-3 space-y-3">
-            {document.grounded_claim_verifications.map((verification) => (
-              <article
-                key={`${verification.claim}-${verification.verified_at}`}
-                className="rounded-lg border border-white/10 p-3"
-              >
-                <p className="text-sm text-slate-200">{verification.claim}</p>
-                <p className="mt-2 text-sm font-medium text-sky-200">
-                  {verificationLabels[verification.verdict]}
-                  <span className="font-normal text-slate-400">
-                    {` · Confidence: ${Math.round(verification.confidence * 100)}%`}
-                  </span>
-                </p>
-                <p className="mt-2 text-sm text-slate-400">{verification.explanation}</p>
-                {verification.evidence_sources.length > 0 && (
-                  <details className="mt-3">
-                    <summary className="cursor-pointer text-sm font-medium text-sky-200">
-                      View evidence sources ({verification.evidence_sources.length})
-                    </summary>
-                    <ul className="mt-3 space-y-2 text-sm">
-                      {verification.evidence_sources.map((source) => (
-                        <li key={source.url}>
-                          <a
-                            className="text-sky-200 underline decoration-sky-200/40 underline-offset-2"
-                            href={source.url}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            {source.title || source.domain || "Evidence source"}
-                          </a>
-                          {source.domain && (
-                            <span className="text-slate-400"> · {source.domain}</span>
-                          )}
-                          {source.summary && (
-                            <p className="mt-1 text-slate-400">{source.summary}</p>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
-      {review && onDecision && (
-        <div className="mt-6 rounded-xl border border-sky-300/20 bg-sky-300/[0.04] p-4">
-          <p className="font-medium text-white">Review the suggested change</p>
-          <p className="mt-2 text-sm text-slate-400">
-            Original value: {review.finding.original_value || "No title"}
-          </p>
-          <p className="mt-1 text-sm text-sky-100">
-            Suggested value: {review.finding.suggested_value}
-          </p>
-          <div className="mt-4 flex gap-3">
-            <button
-              disabled={isDeciding}
-              onClick={() => onDecision("ACCEPT")}
-              className="rounded-lg bg-sky-300 px-3 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50"
-            >
-              Accept change
-            </button>
-            <button
-              disabled={isDeciding}
-              onClick={() => onDecision("DECLINE")}
-              className="rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              Decline upload
-            </button>
-          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ContributorReviewPanel({
+  review,
+  onDecision,
+  isDeciding,
+}: {
+  review: ContributorReviewDetails;
+  onDecision: (action: "ACCEPT" | "DECLINE") => void;
+  isDeciding?: boolean;
+}) {
+  return (
+    <section className="contributor-review-panel" aria-labelledby="review-panel-heading">
+      <p className="report-label">A shared decision</p>
+      <h3 id="review-panel-heading">We need your input.</h3>
+      <p>{review.finding.explanation}</p>
+      <div className="suggestion-comparison">
+        <div>
+          <span>Current value</span>
+          <strong>{review.finding.original_value || "No title provided"}</strong>
         </div>
-      )}
+        <ChevronRight aria-hidden="true" />
+        <div>
+          <span>Suggested improvement</span>
+          <strong>{review.finding.suggested_value}</strong>
+        </div>
+      </div>
+      <div className="review-actions">
+        <button
+          className="button button-primary"
+          disabled={isDeciding}
+          onClick={() => onDecision("ACCEPT")}
+        >
+          {isDeciding ? "Saving your decision…" : "Accept suggestion and add"}
+        </button>
+        <button
+          className="button button-quiet"
+          disabled={isDeciding}
+          onClick={() => onDecision("DECLINE")}
+        >
+          Do not add this resource
+        </button>
+      </div>
     </section>
   );
 }

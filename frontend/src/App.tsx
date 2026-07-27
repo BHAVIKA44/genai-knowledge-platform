@@ -6,9 +6,10 @@ import {
   getDocument,
   uploadDocument,
 } from "./api/documents";
+import { EditorialFooter, EditorialHero, KnowledgeStory, ProductHeader } from "./features/landing";
+import { KnowledgeSearch } from "./features/search/KnowledgeSearch";
 import { DocumentOutcome } from "./features/upload/DocumentOutcome";
 import { KnowledgeUploadPanel } from "./features/upload/KnowledgeUploadPanel";
-import { KnowledgeSearch } from "./features/search/KnowledgeSearch";
 import { useState } from "react";
 
 const finalStates = [
@@ -26,7 +27,7 @@ export default function App() {
     mutationFn: ({ file, title }: { file: File; title: string }) => uploadDocument(file, title),
     onSuccess: (document) => {
       setDocumentId(document.id);
-      toast.success("Your resource has been accepted for processing.");
+      toast.success("Your resource is now being reviewed.");
     },
     onError: (error) => toast.error(error.message),
   });
@@ -48,46 +49,47 @@ export default function App() {
       queryClient.setQueryData(["document", documentId], updated);
       queryClient.invalidateQueries({ queryKey: ["contributor-review", documentId] });
       toast.success(
-        updated.status === "APPROVED" ? "Change accepted. Document approved." : "Upload rejected.",
+        updated.status === "APPROVED"
+          ? "Suggestion accepted. Your resource is now in the knowledge base."
+          : "This resource was not added.",
       );
     },
     onError: (error) => toast.error(error.message),
   });
   return (
-    <main className="min-h-screen bg-[#090b10] px-5 py-16 text-slate-100">
-      <Toaster theme="dark" />
-      <div className="mx-auto max-w-3xl">
-        <p className="text-sm font-medium uppercase tracking-[0.2em] text-sky-200">
-          GenAI knowledge platform
-        </p>
-        <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">
-          Knowledge that earns its place.
-        </h1>
-        <p className="mt-4 max-w-2xl text-lg text-slate-400">
-          Contribute a GenAI learning resource. It will be extracted, checked, and only then
-          considered for the shared knowledge base.
-        </p>
-        <div className="mt-10 grid gap-6">
-          <KnowledgeUploadPanel
-            onSubmit={(file, title) => upload.mutate({ file, title })}
-            isSubmitting={upload.isPending}
-          />
-          {document.data && (
-            <DocumentOutcome
-              document={document.data}
-              review={review.data}
-              onDecision={(action) => decision.mutate(action)}
-              isDeciding={decision.isPending}
-            />
-          )}
-          {document.isError && (
-            <p className="rounded-xl border border-red-300/20 bg-red-300/10 p-4 text-red-100">
-              We could not refresh this result. Please try again.
-            </p>
-          )}
-          <KnowledgeSearch />
+    <main className="app-shell">
+      <Toaster theme="dark" position="top-right" />
+      <ProductHeader />
+      <EditorialHero />
+      <KnowledgeStory />
+      <section className="workspace-section" id="add-knowledge" aria-labelledby="workspace-heading">
+        <div className="workspace-heading">
+          <p className="section-kicker">Your knowledge library</p>
+          <h2 id="workspace-heading">Add to your knowledge base</h2>
+          <p>We’ll review the resource before it becomes searchable.</p>
         </div>
-      </div>
+        <KnowledgeUploadPanel
+          onSubmit={(file, title) => upload.mutate({ file, title })}
+          isSubmitting={upload.isPending}
+        />
+        {document.data && (
+          <DocumentOutcome
+            document={document.data}
+            review={review.data}
+            onDecision={(action) => decision.mutate(action)}
+            isDeciding={decision.isPending}
+          />
+        )}
+        {document.isError && (
+          <p className="safe-error" role="alert">
+            We could not refresh this review. Please try again.
+          </p>
+        )}
+      </section>
+      <section className="search-section" id="search" aria-labelledby="search-heading">
+        <KnowledgeSearch />
+      </section>
+      <EditorialFooter />
     </main>
   );
 }
