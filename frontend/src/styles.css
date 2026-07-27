@@ -146,26 +146,6 @@ summary:focus-visible,
   color: var(--text);
 }
 
-.header-action {
-  display: inline-flex;
-  justify-self: end;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 11px;
-  border: 1px solid rgb(57 142 255 / 0.55);
-  border-radius: 6px;
-  color: #dcecff;
-  background: rgb(57 142 255 / 0.1);
-  transition:
-    background 160ms ease,
-    border-color 160ms ease;
-}
-
-.header-action:hover {
-  border-color: var(--blue-bright);
-  background: rgb(57 142 255 / 0.18);
-}
-
 .section-kicker,
 .report-label {
   margin: 0;
@@ -195,7 +175,6 @@ summary:focus-visible,
 .hero h1,
 .story-intro h2,
 .workspace-heading h2,
-.search-heading h2,
 .editorial-footer h2,
 .decision-hero h2,
 .contributor-review-panel h3 {
@@ -226,7 +205,14 @@ h2 em {
   line-height: 1.7;
 }
 
-.hero-actions,
+.hero-trust {
+  margin: 23px 0 0;
+  color: #c7d7e8;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .review-actions {
   display: flex;
   flex-wrap: wrap;
@@ -377,8 +363,7 @@ h2 em {
 }
 
 .story-intro h2,
-.workspace-heading h2,
-.search-heading h2 {
+.workspace-heading h2 {
   margin: 18px 0 0;
   font-size: clamp(3rem, 5vw, 5.25rem);
   line-height: 0.9;
@@ -426,27 +411,65 @@ h2 em {
   color: rgb(141 197 255 / 0.65);
 }
 
-.workspace-section,
-.search-section {
+.workspace-section {
   padding: 9rem 3.7vw;
   border-top: 1px solid var(--border);
 }
 
-.workspace-heading,
-.search-heading {
+.workspace-heading {
   max-width: 660px;
 }
 
 .workspace-heading > p:not(.section-kicker),
-.search-heading > p:not(.section-kicker) {
+.workspace-column-heading > p:not(.section-kicker) {
   margin: 23px 0 0;
   color: var(--muted);
   font-size: 1rem;
   line-height: 1.6;
 }
 
+.workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(32px, 5vw, 88px);
+  margin-top: 58px;
+  border-top: 1px solid var(--border);
+}
+
+.workspace-column {
+  min-width: 0;
+  padding-top: 38px;
+}
+
+.workspace-column + .workspace-column {
+  position: relative;
+}
+
+.workspace-column + .workspace-column::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(clamp(32px, 5vw, 88px) / -2);
+  width: 1px;
+  content: "";
+  background: var(--border);
+}
+
+.workspace-column-heading {
+  max-width: 500px;
+}
+
+.workspace-column-heading h3 {
+  margin: 16px 0 0;
+  font-family: var(--display);
+  font-size: clamp(2.2rem, 3.7vw, 3.65rem);
+  font-weight: 400;
+  letter-spacing: -0.055em;
+  line-height: 0.9;
+}
+
 .upload-workspace {
-  margin-top: 48px;
+  margin-top: 36px;
 }
 
 .document-dropzone {
@@ -1036,17 +1059,12 @@ h2 em {
   background: rgb(229 139 145 / 0.08);
 }
 
-.search-section {
-  padding-top: 10rem;
-  padding-bottom: 10rem;
-}
-
 .trusted-search-form {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 13px;
-  margin-top: 43px;
+  margin-top: 36px;
   padding: 10px 10px 10px 18px;
   border: 1px solid var(--border-strong);
   border-radius: 9px;
@@ -1195,10 +1213,6 @@ h2 em {
   color: var(--muted);
   line-height: 1.6;
 }
-.editorial-footer .button {
-  margin-top: 29px;
-}
-
 @keyframes scan {
   from {
     background-position: 200% 0;
@@ -1213,10 +1227,12 @@ h2 em {
     padding: 0 22px;
   }
   .product-header {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr;
+    gap: 11px;
+    padding: 13px 0;
   }
   .product-header nav {
-    display: none;
+    justify-self: start;
   }
   .hero {
     grid-template-columns: 1fr;
@@ -1237,6 +1253,17 @@ h2 em {
   .knowledge-story {
     grid-template-columns: 1fr;
     gap: 52px;
+  }
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .workspace-column + .workspace-column::before {
+    top: calc(clamp(32px, 5vw, 88px) / -2);
+    right: 0;
+    bottom: auto;
+    left: 0;
+    width: auto;
+    height: 1px;
   }
   .story-intro {
     position: static;
@@ -1292,8 +1319,9 @@ h2 em {
   .wordmark {
     font-size: 0.71rem;
   }
-  .header-action {
-    padding: 7px 8px;
+  .product-header nav {
+    flex-wrap: wrap;
+    gap: 12px 18px;
     font-size: 0.7rem;
   }
   .hero {
@@ -1318,7 +1346,6 @@ h2 em {
   }
   .knowledge-story,
   .workspace-section,
-  .search-section,
   .editorial-footer {
     padding-right: 1px;
     padding-left: 1px;
@@ -1327,8 +1354,7 @@ h2 em {
     padding-top: 6rem;
     padding-bottom: 6rem;
   }
-  .workspace-section,
-  .search-section {
+  .workspace-section {
     padding-top: 6rem;
     padding-bottom: 6rem;
   }

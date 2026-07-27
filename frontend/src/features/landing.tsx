@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowDownRight, ArrowUpRight, BookOpenText, Check, Search } from "lucide-react";
+import { BookOpenText, Search } from "lucide-react";
 
 export function ProductHeader() {
   return (
@@ -9,13 +9,10 @@ export function ProductHeader() {
         GenAI Knowledge Platform
       </a>
       <nav aria-label="Main navigation">
-        <a href="#add-knowledge">Add knowledge</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#add-knowledge">Add Knowledge</a>
         <a href="#search">Search</a>
-        <a href="#how-it-works">How it works</a>
       </nav>
-      <a className="header-action" href="#add-knowledge">
-        Add a resource <ArrowUpRight size={14} aria-hidden="true" />
-      </a>
     </header>
   );
 }
@@ -32,21 +29,12 @@ export function EditorialHero() {
         transition={transition}
       >
         <p className="section-kicker">GenAI Knowledge Platform</p>
-        <h1 id="hero-heading">
-          Build knowledge <em>you can rely on.</em>
-        </h1>
+        <h1 id="hero-heading">One place to learn, share, and grow your GenAI knowledge.</h1>
         <p className="hero-description">
-          Add papers, guides, and learning resources. Every source is reviewed before it becomes
-          part of your searchable GenAI knowledge base.
+          Explore useful resources, contribute what you know, and build a trusted GenAI knowledge
+          library together.
         </p>
-        <div className="hero-actions">
-          <a className="button button-primary" href="#add-knowledge">
-            Add a resource <ArrowDownRight size={17} aria-hidden="true" />
-          </a>
-          <a className="button button-quiet" href="#search">
-            Search your knowledge
-          </a>
-        </div>
+        <p className="hero-trust">Every contribution is reviewed before it becomes searchable.</p>
       </motion.div>
       <KnowledgeVisual />
       <p className="hero-caption">A calmer way to grow what you know.</p>
@@ -95,16 +83,20 @@ export function KnowledgeVisual() {
 }
 
 const story = [
-  ["01", "Add a resource", "Bring in a GenAI paper, guide, or note."],
-  ["02", "Understand the content", "We read the material and identify what it teaches."],
-  ["03", "Review its quality", "Clarity, relevance, and incomplete explanations are surfaced."],
+  ["01", "You add a resource", "Share a paper, guide, or note that helped you learn."],
+  ["02", "We understand the content", "We identify what the resource can teach the community."],
+  ["03", "We review the quality", "We look for clarity, relevance, and useful context."],
   [
     "04",
-    "Check references when useful",
-    "Time-sensitive claims can be compared with external evidence.",
+    "We check important claims",
+    "When useful, we compare changing information with references.",
   ],
-  ["05", "Make a clear decision", "The resource is added, paused for your input, or kept out."],
-  ["06", "Search trusted knowledge", "Only accepted material becomes part of your library."],
+  [
+    "05",
+    "We ask for your input when needed",
+    "You stay in control when a resource needs a quick decision.",
+  ],
+  ["06", "We add trusted knowledge", "Accepted resources become part of the community library."],
 ] as const;
 
 export function KnowledgeStory() {
@@ -113,9 +105,7 @@ export function KnowledgeStory() {
     <section className="knowledge-story" id="how-it-works" aria-labelledby="story-heading">
       <div className="story-intro">
         <p className="section-kicker">How it works</p>
-        <h2 id="story-heading">
-          What deserves <em>to be remembered?</em>
-        </h2>
+        <h2 id="story-heading">How trusted knowledge reaches the platform</h2>
       </div>
       <div className="story-steps">
         {story.map(([number, title, description], index) => (
@@ -151,9 +141,6 @@ export function EditorialFooter() {
         Your knowledge base <em>should know better.</em>
       </h2>
       <p>Build a library of GenAI learning material you can return to with confidence.</p>
-      <a className="button button-primary" href="#add-knowledge">
-        Add your first resource <Check size={17} aria-hidden="true" />
-      </a>
     </footer>
   );
 }

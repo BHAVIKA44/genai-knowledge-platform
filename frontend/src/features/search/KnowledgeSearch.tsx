@@ -15,13 +15,6 @@ export function KnowledgeSearch() {
 
   return (
     <div className="trusted-search">
-      <div className="search-heading">
-        <p className="section-kicker">Your knowledge library</p>
-        <h2 id="search-heading">
-          Search what <em>you trust.</em>
-        </h2>
-        <p>Explore resources that have already been reviewed and accepted.</p>
-      </div>
       <form className="trusted-search-form" onSubmit={submit}>
         <label htmlFor="knowledge-search" className="sr-only">
           Search trusted knowledge

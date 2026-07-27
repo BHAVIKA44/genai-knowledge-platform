@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Toaster, toast } from "sonner";
+import { useState } from "react";
 import {
   decideContributorReview,
   getContributorReview,
@@ -10,7 +11,6 @@ import { EditorialFooter, EditorialHero, KnowledgeStory, ProductHeader } from ".
 import { KnowledgeSearch } from "./features/search/KnowledgeSearch";
 import { DocumentOutcome } from "./features/upload/DocumentOutcome";
 import { KnowledgeUploadPanel } from "./features/upload/KnowledgeUploadPanel";
-import { useState } from "react";
 
 const finalStates = [
   "APPROVED",
@@ -62,16 +62,38 @@ export default function App() {
       <ProductHeader />
       <EditorialHero />
       <KnowledgeStory />
-      <section className="workspace-section" id="add-knowledge" aria-labelledby="workspace-heading">
+      <section className="workspace-section" aria-labelledby="workspace-heading">
         <div className="workspace-heading">
-          <p className="section-kicker">Your knowledge library</p>
-          <h2 id="workspace-heading">Add to your knowledge base</h2>
-          <p>We’ll review the resource before it becomes searchable.</p>
+          <p className="section-kicker">Learn and contribute</p>
+          <h2 id="workspace-heading">Learn from the community. Contribute to it.</h2>
         </div>
-        <KnowledgeUploadPanel
-          onSubmit={(file, title) => upload.mutate({ file, title })}
-          isSubmitting={upload.isPending}
-        />
+        <div className="workspace-grid">
+          <section className="workspace-column" id="search" aria-labelledby="learn-heading">
+            <div className="workspace-column-heading">
+              <p className="section-kicker">Learn</p>
+              <h3 id="learn-heading">Discover trusted GenAI knowledge</h3>
+              <p>
+                Search reviewed notes, papers, guides, and practical learning resources shared by
+                the community.
+              </p>
+            </div>
+            <KnowledgeSearch />
+          </section>
+          <section className="workspace-column" id="add-knowledge" aria-labelledby="share-heading">
+            <div className="workspace-column-heading">
+              <p className="section-kicker">Share</p>
+              <h3 id="share-heading">Add what you have learned</h3>
+              <p>
+                Share useful GenAI material and help others learn from resources, explanations, and
+                ideas worth keeping.
+              </p>
+            </div>
+            <KnowledgeUploadPanel
+              onSubmit={(file, title) => upload.mutate({ file, title })}
+              isSubmitting={upload.isPending}
+            />
+          </section>
+        </div>
         {document.data && (
           <DocumentOutcome
             document={document.data}
@@ -85,9 +107,6 @@ export default function App() {
             We could not refresh this review. Please try again.
           </p>
         )}
-      </section>
-      <section className="search-section" id="search" aria-labelledby="search-heading">
-        <KnowledgeSearch />
       </section>
       <EditorialFooter />
     </main>
