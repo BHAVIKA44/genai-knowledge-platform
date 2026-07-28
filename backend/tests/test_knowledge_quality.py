@@ -34,12 +34,13 @@ def test_complete_metadata_and_relevant_content_is_approved() -> None:
     assert result.detected_topics
 
 
-def test_missing_title_requires_contributor_review() -> None:
+def test_missing_title_is_a_non_blocking_suggestion() -> None:
     result = KnowledgeQualityEngine(Settings()).validate(
         VALID_INPUT.model_copy(update={"title": ""})
     )
-    assert result.recommended_routing is RecommendedRouting.CONTRIBUTOR_REVIEW_REQUIRED
+    assert result.recommended_routing is RecommendedRouting.APPROVED
     assert [finding.code for finding in result.findings] == ["GENAI_RELEVANT", "MISSING_TITLE"]
+    assert result.findings[-1].severity is FindingSeverity.INFO
 
 
 def test_non_genai_document_is_rejected() -> None:
@@ -54,6 +55,35 @@ def test_non_genai_document_is_rejected() -> None:
     )
     assert result.recommended_routing is RecommendedRouting.REJECTED
     assert any(finding.code == "NON_GENAI_CONTENT" for finding in result.blocking_issues)
+
+
+def test_generative_ai_content_is_within_the_supported_scope() -> None:
+    result = KnowledgeQualityEngine(Settings()).validate(
+        VALID_INPUT.model_copy(
+            update={
+                "extracted_text": (
+                    "Generative AI evaluation helps teams assess whether model responses are useful, "
+                    "clear, and grounded in approved context."
+                )
+            }
+        )
+    )
+    assert result.recommended_routing is RecommendedRouting.APPROVED
+    assert "Generative AI" in result.detected_topics
+
+
+def test_english_genai_content_with_common_short_words_is_not_rejected_as_non_english() -> None:
+    result = KnowledgeQualityEngine(Settings()).validate(
+        VALID_INPUT.model_copy(
+            update={
+                "extracted_text": (
+                    "Generative AI retrieval retrieves approved context before a language model "
+                    "answers. Engineers evaluate source relevance and citations."
+                )
+            }
+        )
+    )
+    assert not any(finding.code == "UNSUPPORTED_LANGUAGE" for finding in result.findings)
 
 
 def test_blocking_finding_overrides_other_routing_signals() -> None:
@@ -82,6 +112,24 @@ def test_blocking_finding_overrides_other_routing_signals() -> None:
     assert result.recommended_routing is RecommendedRouting.REJECTED
     assert result.warning_count == 1
     assert result.blocking_issues == [blocking]
+
+
+def test_minor_warnings_do_not_block_otherwise_approved_content() -> None:
+    warning = QualityFinding(
+        code="MISSING_CONTEXT",
+        category=FindingCategory.SEMANTIC_QUALITY,
+        severity=FindingSeverity.WARNING,
+        confidence=0.9,
+        title="More context would help",
+        explanation="The definition could be more complete.",
+    )
+
+    class WarningValidator:
+        def validate(self, _: QualityValidationInput) -> ValidatorResult:
+            return ValidatorResult(findings=[warning])
+
+    result = KnowledgeQualityEngine(Settings(), [WarningValidator()]).validate(VALID_INPUT)
+    assert result.recommended_routing is RecommendedRouting.APPROVED
 
 
 def test_validator_order_does_not_change_routing() -> None:

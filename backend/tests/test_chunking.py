@@ -50,6 +50,11 @@ def test_excludes_empty_chunks_and_enforces_limit(monkeypatch: pytest.MonkeyPatc
         chunking.chunk(SimpleNamespace())
 
 
+def test_default_limit_allows_more_than_one_hundred_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    chunking = service(monkeypatch, [source_chunk(str(index)) for index in range(101)])
+    assert len(chunking.chunk(SimpleNamespace())) == 101
+
+
 def test_chunker_failure_uses_typed_error(monkeypatch: pytest.MonkeyPatch) -> None:
     chunking = service(monkeypatch, [])
     chunking.chunker = SimpleNamespace(

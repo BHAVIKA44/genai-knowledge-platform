@@ -11,6 +11,7 @@ from app.knowledge_quality.models import (
 )
 
 TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "Generative AI": ("generative ai", "genai", "generative artificial intelligence"),
     "Large Language Models": ("large language model", "llm", "language model"),
     "Retrieval-Augmented Generation": ("retrieval augmented", "rag", "retrieval"),
     "Embeddings": ("embedding", "embeddings", "vector database", "vector search"),
@@ -18,7 +19,28 @@ TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
     "Prompt Engineering": ("prompt engineering", "prompt", "few-shot"),
     "Agents": ("agent", "tool calling", "model context protocol", "mcp"),
 }
-ENGLISH_MARKERS = {"the", "and", "for", "with", "that", "this", "from", "are", "is", "to"}
+ENGLISH_MARKERS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "before",
+    "can",
+    "for",
+    "from",
+    "in",
+    "into",
+    "is",
+    "of",
+    "on",
+    "that",
+    "the",
+    "this",
+    "to",
+    "will",
+    "with",
+}
 
 
 class MetadataValidator:
@@ -30,11 +52,13 @@ class MetadataValidator:
                 QualityFinding(
                     code="MISSING_TITLE",
                     category=FindingCategory.METADATA,
-                    severity=FindingSeverity.WARNING,
+                    severity=FindingSeverity.INFO,
                     confidence=1,
                     title="Title is missing",
                     explanation="A title makes this knowledge easier to identify.",
-                    suggested_action="Add a clear title before publishing.",
+                    suggested_action=(
+                        "You can add a clear title to make this resource easier to identify."
+                    ),
                     original_value="",
                     suggested_value=Path(value.source_filename).stem.replace("_", " ").strip(),
                 )

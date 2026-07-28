@@ -1,19 +1,28 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { ChevronDown, FileText, Upload, X } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 
-type Props = { onSubmit: (file: File, title: string) => void; isSubmitting: boolean };
+type Props = {
+  onSubmit: (file: File, title: string) => void;
+  isSubmitting: boolean;
+  error?: string | null;
+  resetKey?: number;
+};
 
 function formatFileSize(size: number) {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function KnowledgeUploadPanel({ onSubmit, isSubmitting }: Props) {
+export function KnowledgeUploadPanel({ onSubmit, isSubmitting, error, resetKey = 0 }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const reducedMotion = useReducedMotion();
+  useEffect(() => {
+    setFile(null);
+    setTitle("");
+  }, [resetKey]);
   const onDrop = useCallback((accepted: File[]) => setFile(accepted[0] ?? null), []);
   const dropzone = useDropzone({
     onDrop,
@@ -32,7 +41,7 @@ export function KnowledgeUploadPanel({ onSubmit, isSubmitting }: Props) {
           role: file ? undefined : "button",
           className: `document-dropzone${dropzone.isDragActive ? " is-active" : ""}${
             file ? " has-file" : ""
-          }`,
+          }${isSubmitting ? " is-disabled" : ""}`,
         })}
       >
         <input {...dropzone.getInputProps()} />
@@ -150,6 +159,11 @@ export function KnowledgeUploadPanel({ onSubmit, isSubmitting }: Props) {
       >
         {isSubmitting ? "Adding your resource…" : "Review this resource"}
       </button>
+      {error && (
+        <p className="safe-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import pytest
 
 from app.core.errors import DomainError
-from app.documents.models import DocumentStatus, KnowledgeDocument
+from app.documents.models import DocumentStatus, DocumentType, KnowledgeDocument
 from app.documents.service import DocumentIngestionService
+from app.knowledge_quality.models import FindingCategory, FindingSeverity, QualityFinding
 from app.reviews.service import ContributorReviewService
 
 VALID_TEXT = (
@@ -12,15 +13,48 @@ VALID_TEXT = (
 
 
 def reviewed_document(service: DocumentIngestionService) -> KnowledgeDocument:
-    document = service.submit("rag_notes.md", VALID_TEXT, "text/markdown", None)
-    service.process(document.id, VALID_TEXT)
-    return service.session.get(KnowledgeDocument, document.id)
+    document = KnowledgeDocument(
+        title="",
+        source_filename="rag_notes.md",
+        storage_filename="rag_notes.md",
+        source_storage_key="reviewed.md",
+        document_type=DocumentType.MARKDOWN,
+        status=DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED,
+        sha256="reviewed-document",
+        validation_findings=[
+            QualityFinding(
+                code="REQUIRED_CORRECTION",
+                category=FindingCategory.SEMANTIC_QUALITY,
+                severity=FindingSeverity.WARNING,
+                confidence=1,
+                title="Title needs a correction",
+                explanation="A contributor correction is required before publishing.",
+                original_value="",
+                suggested_value="rag notes",
+            ).model_dump()
+        ],
+    )
+    service.session.add(document)
+    service.session.commit()
+    return document
 
 
 def test_review_details_are_available_only_while_review_is_required(service) -> None:
     document = reviewed_document(service)
     details = ContributorReviewService(service.session).get_details(document.id)
     assert details[1].suggested_value == "rag notes"
+
+
+def test_blocking_title_correction_is_available_for_contributor_review(service) -> None:
+    document = reviewed_document(service)
+    document.validation_findings[0]["severity"] = FindingSeverity.BLOCKING
+    service.session.add(document)
+    service.session.commit()
+
+    _, finding = ContributorReviewService(service.session).get_details(document.id)
+
+    assert finding.suggested_value == "rag notes"
+    assert finding.severity is FindingSeverity.BLOCKING
 
 
 def test_accepting_title_suggestion_indexes_and_commits_updated_record(

@@ -4,6 +4,7 @@ import digitalHumanHead from "../assets/digital-human-head.png";
 type HudCallout = {
   className: string;
   delay: number;
+  floatClassName: string;
   text: string;
 };
 
@@ -11,21 +12,25 @@ const callouts: readonly HudCallout[] = [
   {
     className: "hud-callout-forehead",
     delay: 0.56,
+    floatClassName: "hud-callout-float-1",
     text: "OBSESSED WITH HARNESSING\nMULTI-AGENT SWARMS\n& LLM ORCHESTRATION",
   },
   {
     className: "hud-callout-brain",
     delay: 0.68,
+    floatClassName: "hud-callout-float-2",
     text: "MAPPING KNOWLEDGE INTO\nHIGH-DIMENSIONAL VECTOR DBs",
   },
   {
     className: "hud-callout-eye",
     delay: 0.8,
+    floatClassName: "hud-callout-float-3",
     text: "SPOTS MODEL HALLUCINATIONS\nIN MILLISECONDS",
   },
   {
     className: "hud-callout-mouth",
     delay: 0.92,
+    floatClassName: "hud-callout-float-4",
     text: "SPEAKS IN EMBEDDINGS,\nCHUNK SIZES &\nCOSINE SIMILARITY",
   },
 ];
@@ -40,7 +45,7 @@ function HudCallout({ callout }: { callout: HudCallout }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reducedMotion ? 0 : 0.28, delay: reducedMotion ? 0 : callout.delay }}
     >
-      {callout.text}
+      <span className={`hud-callout-float ${callout.floatClassName}`}>{callout.text}</span>
     </motion.p>
   );
 }
@@ -59,12 +64,17 @@ export function DigitalHumanVisual() {
       transition={{ duration: reducedMotion ? 0 : 0.64, delay: reducedMotion ? 0 : 0.52 }}
     >
       <div className="digital-human-image-stage" aria-hidden="true">
-        <motion.img
-          className="digital-human-image"
-          src={digitalHumanHead}
-          alt=""
-          style={{ y: reducedMotion ? 0 : imageOffset }}
-        />
+        <div className="digital-human-image-float">
+          <motion.img
+            className="digital-human-image"
+            src={digitalHumanHead}
+            alt=""
+            style={{ y: reducedMotion ? 0 : imageOffset }}
+          />
+        </div>
+        <span className="bust-scanline-track" aria-hidden="true">
+          <span className="bust-scanline" />
+        </span>
       </div>
       <motion.div className="digital-human-hud" style={{ y: reducedMotion ? 0 : hudOffset }}>
         <svg

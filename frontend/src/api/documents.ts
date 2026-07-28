@@ -73,9 +73,19 @@ type ApiError = {
 };
 
 async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiUrl}${input}`, init);
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}${input}`, init);
+  } catch {
+    throw new Error("We could not reach the service. Please try again.");
+  }
   if (!response.ok) {
-    const payload = (await response.json()) as ApiError;
+    let payload: ApiError;
+    try {
+      payload = (await response.json()) as ApiError;
+    } catch {
+      throw new Error("We could not finish that request. Please try again.");
+    }
     throw new Error(
       payload.error.action
         ? `${payload.error.message} ${payload.error.action}`

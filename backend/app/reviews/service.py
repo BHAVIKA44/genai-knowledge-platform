@@ -96,7 +96,10 @@ class ContributorReviewService:
     def _correction_finding(document: KnowledgeDocument) -> QualityFinding:
         for stored_finding in document.validation_findings:
             finding = QualityFinding.model_validate(stored_finding)
-            if finding.suggested_value and finding.severity is FindingSeverity.WARNING:
+            if finding.suggested_value and finding.severity in {
+                FindingSeverity.WARNING,
+                FindingSeverity.BLOCKING,
+            }:
                 return finding
         raise DomainError(
             "NO_CORRECTION_AVAILABLE",

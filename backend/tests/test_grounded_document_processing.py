@@ -136,19 +136,25 @@ def test_supported_claims_do_not_add_grounding_findings(
 
 
 @pytest.mark.parametrize(
-    ("verdict", "severity", "expected_phrase"),
+    ("verdict", "severity", "expected_status", "expected_phrase"),
     [
-        ("PARTIALLY_SUPPORTED", "WARNING", "partially supported"),
-        ("NOT_SUPPORTED", "BLOCKING", "not supported"),
-        ("INSUFFICIENT_EVIDENCE", "WARNING", "additional evidence"),
+        ("PARTIALLY_SUPPORTED", "WARNING", DocumentStatus.APPROVED, "partially supported"),
+        ("NOT_SUPPORTED", "BLOCKING", DocumentStatus.ADMIN_REVIEW_REQUIRED, "not supported"),
+        (
+            "INSUFFICIENT_EVIDENCE",
+            "WARNING",
+            DocumentStatus.APPROVED,
+            "additional evidence",
+        ),
     ],
 )
-def test_grounded_verdicts_create_deterministic_review_findings(
+def test_grounded_verdicts_create_deterministic_findings(
     service: DocumentIngestionService,
     analysis_client: object,
     monkeypatch: pytest.MonkeyPatch,
     verdict: str,
     severity: str,
+    expected_status: DocumentStatus,
     expected_phrase: str,
 ) -> None:
     stored = _process(
@@ -162,14 +168,14 @@ def test_grounded_verdicts_create_deterministic_review_findings(
     finding = next(
         item for item in stored.validation_findings if item["code"].startswith("GROUNDED_CLAIM")
     )
-    assert stored.status is DocumentStatus.ADMIN_REVIEW_REQUIRED
+    assert stored.status is expected_status
     assert finding["severity"] == severity
     assert expected_phrase in finding["title"].lower()
     if verdict == "INSUFFICIENT_EVIDENCE":
         assert "false" not in finding["explanation"].lower()
 
 
-def test_grounding_failure_routes_safely_without_provider_details(
+def test_grounding_failure_does_not_block_otherwise_valid_content(
     service: DocumentIngestionService, analysis_client: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stored = _process(
@@ -185,7 +191,7 @@ def test_grounding_failure_routes_safely_without_provider_details(
     finding = next(
         item for item in stored.validation_findings if item["code"] == "GROUNDING_FAILED"
     )
-    assert stored.status is DocumentStatus.ADMIN_REVIEW_REQUIRED
+    assert stored.status is DocumentStatus.APPROVED
     assert stored.grounded_claim_verifications == []
     assert "provider secret detail" not in str(finding)
 

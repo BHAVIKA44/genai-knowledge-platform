@@ -7,6 +7,8 @@ from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTok
 from docling_core.types.doc.document import DoclingDocument
 from transformers import AutoTokenizer
 
+from app.core.config import get_settings
+
 
 class ChunkLimitExceededError(ValueError):
     pass
@@ -29,9 +31,11 @@ class NormalizedChunk:
 
 class DocumentChunkingService:
     def __init__(
-        self, max_chunks: int = 100, tokenizer_model: str = "BAAI/bge-small-en-v1.5"
+        self, max_chunks: int | None = None, tokenizer_model: str = "BAAI/bge-small-en-v1.5"
     ) -> None:
-        self.max_chunks = max_chunks
+        self.max_chunks = (
+            max_chunks if max_chunks is not None else get_settings().max_document_chunks
+        )
         tokenizer = HuggingFaceTokenizer(tokenizer=get_chunking_tokenizer(tokenizer_model))
         self.chunker = HybridChunker(tokenizer=tokenizer)
 

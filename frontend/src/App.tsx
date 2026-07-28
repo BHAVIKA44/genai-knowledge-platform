@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Toaster, toast } from "sonner";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   decideContributorReview,
   getContributorReview,
@@ -24,6 +24,11 @@ const finalStates = [
 export default function App() {
   const queryClient = useQueryClient();
   const [documentId, setDocumentId] = useState<string | null>(null);
+  const [uploadResetKey, setUploadResetKey] = useState(0);
+  const [decisionAction, setDecisionAction] = useState<"ACCEPT" | "DECLINE" | null>(null);
+  const [decisionConfirmation, setDecisionConfirmation] = useState<string | null>(null);
+  const uploadInFlight = useRef(false);
+  const decisionInFlight = useRef(false);
   const upload = useMutation({
     mutationFn: ({ file, title }: { file: File; title: string }) => uploadDocument(file, title),
     onSuccess: (document) => {
@@ -31,6 +36,9 @@ export default function App() {
       toast.success("Your resource is now being reviewed.");
     },
     onError: (error) => toast.error(error.message),
+    onSettled: () => {
+      uploadInFlight.current = false;
+    },
   });
   const document = useQuery({
     queryKey: ["document", documentId],
@@ -46,17 +54,49 @@ export default function App() {
   });
   const decision = useMutation({
     mutationFn: (action: "ACCEPT" | "DECLINE") => decideContributorReview(documentId ?? "", action),
-    onSuccess: (updated) => {
+    onSuccess: async (updated) => {
       queryClient.setQueryData(["document", documentId], updated);
-      queryClient.invalidateQueries({ queryKey: ["contributor-review", documentId] });
-      toast.success(
+      await queryClient.invalidateQueries({ queryKey: ["document", documentId] });
+      queryClient.removeQueries({ queryKey: ["contributor-review", documentId] });
+      const confirmation =
         updated.status === "APPROVED"
-          ? "Suggestion accepted. Your resource is now in the knowledge base."
-          : "This resource was not added.",
-      );
+          ? "Resource added to your knowledge base."
+          : "Resource was not added.";
+      setDecisionConfirmation(confirmation);
+      setUploadResetKey((current) => current + 1);
+      toast.success(confirmation);
     },
     onError: (error) => toast.error(error.message),
+    onSettled: () => {
+      decisionInFlight.current = false;
+      setDecisionAction(null);
+    },
   });
+
+  const isProcessing =
+    upload.isPending || (document.data != null && !finalStates.includes(document.data.status));
+
+  function submitUpload(file: File, title: string) {
+    if (uploadInFlight.current) return;
+    uploadInFlight.current = true;
+    setDecisionConfirmation(null);
+    setDocumentId(null);
+    upload.mutate({ file, title });
+  }
+
+  function decideReview(action: "ACCEPT" | "DECLINE") {
+    if (decisionInFlight.current) return;
+    decisionInFlight.current = true;
+    setDecisionAction(action);
+    decision.mutate(action);
+  }
+
+  function resetUpload() {
+    setDocumentId(null);
+    setDecisionConfirmation(null);
+    setUploadResetKey((current) => current + 1);
+  }
+
   return (
     <main className="app-shell">
       <Toaster theme="dark" position="top-right" />
@@ -88,16 +128,33 @@ export default function App() {
             <h3 id="share-heading">Add what you have learned</h3>
           </div>
           <KnowledgeUploadPanel
-            onSubmit={(file, title) => upload.mutate({ file, title })}
+            onSubmit={submitUpload}
             isSubmitting={upload.isPending}
+            error={upload.isError ? upload.error.message : null}
+            resetKey={uploadResetKey}
           />
+          {isProcessing && (
+            <p className="review-status-message" role="status" aria-live="polite">
+              Reviewing your resource. This may take a few seconds to a few minutes depending on the
+              document size.
+            </p>
+          )}
+          {decisionConfirmation && (
+            <p className="decision-confirmation" role="status" aria-live="polite">
+              {decisionConfirmation}
+            </p>
+          )}
         </div>
         {document.data && (
           <DocumentOutcome
             document={document.data}
-            review={review.data}
-            onDecision={(action) => decision.mutate(action)}
+            review={
+              document.data.status === "CONTRIBUTOR_REVIEW_REQUIRED" ? review.data : undefined
+            }
+            onDecision={decideReview}
             isDeciding={decision.isPending}
+            decisionAction={decisionAction}
+            onRetry={document.data.status === "FAILED" ? resetUpload : undefined}
           />
         )}
         {document.isError && (

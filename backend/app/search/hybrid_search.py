@@ -1,11 +1,13 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
+import re
 from typing import cast
 
 import structlog
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from app.core.config import Settings, get_settings
 from app.documents.chunk_models import DocumentChunk
 from app.documents.models import DocumentStatus, KnowledgeDocument
 from app.embeddings import DocumentEmbedder
@@ -35,11 +37,19 @@ class HybridSearchError(Exception):
 
 
 class HybridSearchService:
-    def __init__(self, session: Session, embedder: DocumentEmbedder | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        embedder: DocumentEmbedder | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         self.session = session
         self.embedder = embedder or DocumentEmbedder()
+        self.minimum_vector_similarity = (settings or get_settings()).minimum_vector_similarity
 
     def search(self, query: str) -> list[HybridSearchResult]:
+        if not re.search(r"[\w]", query):
+            return []
         try:
             query_vector = self.embedder.embed_query(query)
             keyword_hits = self._keyword_hits(query)
@@ -121,7 +131,11 @@ class HybridSearchService:
             .order_by(distance, document_table.c.id, chunk_table.c.position)
         )
         rows = cast(Iterable[SearchRow], self.session.exec(statement))
-        return self._best_hits(rows)
+        # Cosine similarity is an absolute relevance signal; candidate-relative normalization
+        # must happen only after low-similarity vector matches are excluded.
+        return self._best_hits(
+            row for row in rows if row[4] >= self.minimum_vector_similarity
+        )
 
     @staticmethod
     def _best_hits(rows: Iterable[SearchRow]) -> dict[str, tuple[str, str, int, float]]:

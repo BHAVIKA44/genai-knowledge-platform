@@ -1,16 +1,32 @@
-import { useMutation } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowUpRight, Search } from "lucide-react";
 import { searchKnowledge } from "../../api/search";
 
 export function KnowledgeSearch() {
   const [query, setQuery] = useState("");
-  const search = useMutation({ mutationFn: searchKnowledge });
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
+  const search = useQuery({
+    queryKey: ["knowledge-search", submittedQuery],
+    queryFn: () => searchKnowledge(submittedQuery ?? ""),
+    enabled: Boolean(submittedQuery),
+  });
   const results = search.data ?? [];
+
+  function submitQuery() {
+    const normalizedQuery = query.trim();
+    if (normalizedQuery) setSubmittedQuery(normalizedQuery);
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (query.trim()) search.mutate(query.trim());
+    submitQuery();
+  }
+
+  function submitFromKeyboard(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    submitQuery();
   }
 
   return (
@@ -23,21 +39,30 @@ export function KnowledgeSearch() {
         <input
           id="knowledge-search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={submitFromKeyboard}
+          onChange={(event) => {
+            const nextQuery = event.target.value;
+            setQuery(nextQuery);
+            if (!nextQuery.trim()) setSubmittedQuery(null);
+          }}
           placeholder="Search Generative AI topics, concepts, or techniques"
         />
-        <button disabled={search.isPending || !query.trim()} className="button button-primary">
-          {search.isPending ? "Searching…" : "Search"}
+        <button
+          type="submit"
+          disabled={search.isFetching || !query.trim()}
+          className="button button-primary"
+        >
+          {search.isFetching ? "Searching…" : "Search"}
         </button>
       </form>
 
-      {search.isIdle && (
+      {!submittedQuery && (
         <div className="search-empty-state">
           <Search size={20} aria-hidden="true" />
           <p>Your reviewed resources will appear here when they are ready to search.</p>
         </div>
       )}
-      {search.isPending && (
+      {search.isFetching && (
         <div className="search-loading" role="status">
           <p>Searching your knowledge…</p>
           <span />

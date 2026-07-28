@@ -7,7 +7,7 @@ from app.documents.models import DocumentStatus, KnowledgeDocument
 from app.documents.routes import to_response
 from app.documents.state import transition_status
 from app.llm.client import GeminiTimeoutError
-from app.llm.models import KnowledgeAnalysis
+from app.llm.models import KnowledgeAnalysis, SemanticFinding
 
 VALID_GENAI_TEXT = (
     b"Large language models use transformer attention. Retrieval augmented generation uses "
@@ -32,19 +32,13 @@ def test_only_approved_upload_invokes_indexing(service, monkeypatch: pytest.Monk
     assert calls == [document.id]
 
 
-@pytest.mark.parametrize(
-    ("title", "content"),
-    [
-        ("Garden", b"The garden needs sunlight and water for healthy flowers in spring."),
-        (None, VALID_GENAI_TEXT),
-    ],
-)
-def test_non_approved_upload_skips_indexing(service, monkeypatch, title, content) -> None:
+def test_rejected_upload_skips_indexing(service, monkeypatch) -> None:
     monkeypatch.setattr(
         "app.documents.service.DocumentIndexingService",
         lambda *_: pytest.fail("indexer constructed"),
     )
-    document = service.submit("notes.txt", content, "text/plain", title)
+    content = b"The garden needs sunlight and water for healthy flowers in spring."
+    document = service.submit("notes.txt", content, "text/plain", "Garden")
     service.process(document.id, content)
     assert service.session.get(KnowledgeDocument, document.id).status is not DocumentStatus.APPROVED
 
@@ -97,17 +91,29 @@ def test_rejected_document_skips_analysis(service, analysis_client) -> None:
     assert analysis_client.calls == 0
 
 
-def test_missing_title_review_status_and_filename_correction_are_preserved(
-    service, analysis_client
+def test_missing_optional_title_uses_filename_fallback_and_is_approved(
+    service, analysis_client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(service, "_index", lambda _: None)
     document = service.submit("rag_notes.md", VALID_GENAI_TEXT, "text/markdown", None)
     service.process(document.id, VALID_GENAI_TEXT)
     stored = service.session.get(KnowledgeDocument, document.id)
-    assert stored.status is DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
-    assert stored.title == ""
-    assert any(finding["suggested_value"] == "rag notes" for finding in stored.validation_findings)
+    assert stored.status is DocumentStatus.APPROVED
+    assert stored.title == "rag notes"
     assert stored.analysis_proposed_title == "Generated title"
     assert analysis_client.calls == 1
+
+
+def test_missing_optional_title_uses_extracted_markdown_heading(
+    service, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(service, "_index", lambda _: None)
+    content = b"# Retrieval notes\n\n" + VALID_GENAI_TEXT
+    document = service.submit("notes.md", content, "text/markdown", None)
+    service.process(document.id, content)
+    stored = service.session.get(KnowledgeDocument, document.id)
+    assert stored.status is DocumentStatus.APPROVED
+    assert stored.title == "Retrieval notes"
 
 
 def test_analysis_failure_uses_safe_processing_failure(
@@ -220,7 +226,189 @@ def test_exact_duplicate_does_not_create_second_record(service) -> None:
     with pytest.raises(DomainError) as error:
         service.submit("two.txt", VALID_GENAI_TEXT, "text/plain", "Two")
     assert error.value.code == "DUPLICATE_SUBMISSION"
+    assert error.value.message == "This exact document has already been uploaded."
+    assert error.value.action == "Please upload a different version if you made changes."
     assert len(service.session.exec(select(KnowledgeDocument)).all()) == 1
+
+
+def test_duplicate_detection_uses_file_bytes_not_filename(service) -> None:
+    first = service.submit("same-name.txt", VALID_GENAI_TEXT, "text/plain", "First")
+    different_content = (
+        b"Large language models use attention. Prompt engineering uses examples to guide "
+        b"model behavior in Generative AI applications."
+    )
+    second = service.submit("same-name.txt", different_content, "text/plain", "Second")
+    assert first.id != second.id
+
+
+def test_edited_pdf_is_not_a_duplicate_when_its_bytes_change(service, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.documents.service.filetype.guess_mime", lambda *_args: "application/pdf"
+    )
+    original = fitz.open()
+    original.new_page()
+    original.new_page()
+    edited = fitz.open()
+    edited.new_page()
+
+    first = service.submit("genai-principles.pdf", original.tobytes(), "application/pdf", "GenAI")
+    second = service.submit("genai-principles.pdf", edited.tobytes(), "application/pdf", "GenAI")
+
+    assert first.id != second.id
+    assert first.sha256 != second.sha256
+
+
+@pytest.mark.parametrize("category", ["Technical ambiguity", "Missing context"])
+def test_minor_semantic_suggestions_do_not_block_approval(
+    service, analysis_client, monkeypatch: pytest.MonkeyPatch, category: str
+) -> None:
+    monkeypatch.setattr(service, "_index", lambda _: None)
+    analysis_client.analysis = KnowledgeAnalysis(
+        proposed_title=None,
+        summary="A concise explanation of the document.",
+        topics=["RAG"],
+        claims=[],
+        semantic_findings=[
+            SemanticFinding(
+                category=category,
+                severity="WARNING",
+                confidence=0.9,
+                explanation="This could be explained in more depth.",
+                suggested_improvement="Add optional context.",
+                contributor_fix_possible=True,
+                admin_review_required=False,
+            )
+        ],
+    )
+    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "RAG")
+    service.process(document.id, VALID_GENAI_TEXT)
+    assert service.session.get(KnowledgeDocument, document.id).status is DocumentStatus.APPROVED
+
+
+def test_materially_misleading_semantic_finding_requires_admin_review(
+    service, analysis_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(service, "_index", lambda _: None)
+    analysis_client.analysis = KnowledgeAnalysis(
+        proposed_title=None,
+        summary="A concise explanation of the document.",
+        topics=["RAG"],
+        claims=[],
+        semantic_findings=[
+            SemanticFinding(
+                category="Materially misleading claim",
+                severity="BLOCKING",
+                confidence=0.95,
+                explanation="The claim is materially incorrect.",
+                suggested_improvement=None,
+                contributor_fix_possible=False,
+                admin_review_required=True,
+            )
+        ],
+    )
+    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "RAG")
+    service.process(document.id, VALID_GENAI_TEXT)
+    assert (
+        service.session.get(KnowledgeDocument, document.id).status
+        is DocumentStatus.ADMIN_REVIEW_REQUIRED
+    )
+
+
+def test_required_contributor_correction_routes_to_contributor_review(
+    service, analysis_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analysis_client.analysis = KnowledgeAnalysis(
+        proposed_title="RAG guide",
+        summary="A concise explanation of the document.",
+        topics=["RAG"],
+        claims=[],
+        semantic_findings=[
+            SemanticFinding(
+                category="Missing title",
+                severity="BLOCKING",
+                confidence=0.95,
+                explanation="The contributor needs to confirm a clear title before publication.",
+                suggested_improvement="Use the proposed title.",
+                contributor_fix_possible=True,
+                admin_review_required=False,
+            )
+        ],
+    )
+    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "RAG")
+    service.process(document.id, VALID_GENAI_TEXT)
+    assert (
+        service.session.get(KnowledgeDocument, document.id).status
+        is DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
+    )
+
+
+def test_unstructured_contributor_fix_routes_to_admin_review(
+    service, analysis_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(service, "_index", lambda _: None)
+    analysis_client.analysis = KnowledgeAnalysis(
+        proposed_title=None,
+        summary="A concise explanation of the document.",
+        topics=["RAG"],
+        claims=[],
+        semantic_findings=[
+            SemanticFinding(
+                category="Missing context",
+                severity="BLOCKING",
+                confidence=0.95,
+                explanation="The resource is incomplete.",
+                suggested_improvement="Add the missing explanation.",
+                contributor_fix_possible=True,
+                admin_review_required=False,
+            )
+        ],
+    )
+    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "RAG")
+    service.process(document.id, VALID_GENAI_TEXT)
+
+    assert (
+        service.session.get(KnowledgeDocument, document.id).status
+        is DocumentStatus.ADMIN_REVIEW_REQUIRED
+    )
+
+
+def test_title_correction_with_another_blocker_routes_to_admin_review(
+    service, analysis_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(service, "_index", lambda _: None)
+    analysis_client.analysis = KnowledgeAnalysis(
+        proposed_title="RAG guide",
+        summary="A concise explanation of the document.",
+        topics=["RAG"],
+        claims=[],
+        semantic_findings=[
+            SemanticFinding(
+                category="Missing title",
+                severity="BLOCKING",
+                confidence=0.95,
+                explanation="The contributor needs to confirm a clear title before publication.",
+                suggested_improvement="Use the proposed title.",
+                contributor_fix_possible=True,
+                admin_review_required=False,
+            ),
+            SemanticFinding(
+                category="Materially misleading claim",
+                severity="BLOCKING",
+                confidence=0.95,
+                explanation="The claim requires independent review.",
+                suggested_improvement=None,
+                contributor_fix_possible=False,
+                admin_review_required=False,
+            ),
+        ],
+    )
+    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "RAG")
+    service.process(document.id, VALID_GENAI_TEXT)
+
+    assert (
+        service.session.get(KnowledgeDocument, document.id).status
+        is DocumentStatus.ADMIN_REVIEW_REQUIRED
+    )
 
 
 def test_invalid_state_transition_is_rejected() -> None:

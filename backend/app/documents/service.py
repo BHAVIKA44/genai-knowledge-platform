@@ -1,4 +1,5 @@
 import hashlib
+import re
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -75,15 +76,16 @@ class DocumentIngestionService:
         if existing:
             raise DomainError(
                 "DUPLICATE_SUBMISSION",
-                "This exact document has already been submitted.",
-                "Open the existing document instead of uploading it again.",
+                "This exact document has already been uploaded.",
+                "Please upload a different version if you made changes.",
                 409,
             )
 
         display_name = Path(filename).name or "uploaded-document"
         source_key = self.source_storage.save(content, Path(display_name).suffix)
+        fallback_title = self._fallback_title(display_name)
         document = KnowledgeDocument(
-            title=title.strip() if title and title.strip() else "",
+            title=title.strip() if title and title.strip() else fallback_title,
             source_filename=display_name,
             storage_filename=f"{uuid4()}{Path(display_name).suffix.lower()}",
             source_storage_key=source_key,
@@ -115,6 +117,8 @@ class DocumentIngestionService:
                 document.source_storage_key, document.document_type
             )
             text = parsed_document.text
+            if document.title == self._fallback_title(document.source_filename):
+                document.title = self._extracted_title(text) or document.title
             quality_result = self.quality_engine.validate(
                 QualityValidationInput(
                     title=document.title,
@@ -153,11 +157,16 @@ class DocumentIngestionService:
                 *document.validation_findings,
                 *(finding.model_dump() for finding in grounding_findings),
             ]
+            requires_contributor_review = self._requires_contributor_review(analysis)
+            has_unstructured_blocking_finding = any(
+                finding.severity is FindingSeverity.BLOCKING and not finding.suggested_value
+                for finding in semantic_findings + grounding_findings
+            )
             if any(
                 finding.admin_review_required for finding in semantic_findings + grounding_findings
-            ):
+            ) or has_unstructured_blocking_finding:
                 target_status = DocumentStatus.ADMIN_REVIEW_REQUIRED
-            elif semantic_findings and target_status is DocumentStatus.APPROVED:
+            elif requires_contributor_review and target_status is DocumentStatus.APPROVED:
                 target_status = DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
             self._persist_analysis(document, analysis, grounding_results, target_status)
         except DomainError as error:
@@ -259,10 +268,41 @@ class DocumentIngestionService:
                 title=finding.category.replace("_", " ").title(),
                 explanation=finding.explanation,
                 suggested_action=finding.suggested_improvement,
+                original_value="" if "title" in finding.category.casefold() else None,
+                suggested_value=(
+                    analysis.proposed_title
+                    if "title" in finding.category.casefold() and analysis.proposed_title
+                    else None
+                ),
                 admin_review_required=finding.admin_review_required,
             )
             for index, finding in enumerate(analysis.semantic_findings, start=1)
         ]
+
+    @staticmethod
+    def _requires_contributor_review(analysis: KnowledgeAnalysis) -> bool:
+        return any(
+            finding.severity == "BLOCKING"
+            and finding.contributor_fix_possible
+            and not finding.admin_review_required
+            and finding.suggested_improvement
+            and "title" in finding.category.casefold()
+            and analysis.proposed_title
+            for finding in analysis.semantic_findings
+        )
+
+    @staticmethod
+    def _fallback_title(filename: str) -> str:
+        cleaned = re.sub(r"[_-]+", " ", Path(filename).stem).strip()
+        return cleaned or "Uploaded document"
+
+    @staticmethod
+    def _extracted_title(text: str) -> str | None:
+        match = re.search(r"^\s*#\s+(.+?)\s*$", text, flags=re.MULTILINE)
+        if not match:
+            return None
+        title = " ".join(match.group(1).split())
+        return title[:200] or None
 
     def _ground_claims(
         self, analysis: KnowledgeAnalysis
@@ -287,10 +327,7 @@ class DocumentIngestionService:
                     confidence=1,
                     title="Claim verification could not finish",
                     explanation="We could not verify the time-sensitive claims in this document.",
-                    suggested_action=(
-                        "An administrator should review this document before publishing."
-                    ),
-                    admin_review_required=True,
+                    suggested_action="External references could not be checked right now.",
                 )
             ]
         return results, self._grounding_findings(results)
@@ -318,8 +355,12 @@ class DocumentIngestionService:
                     confidence=result.confidence,
                     title=title,
                     explanation=result.explanation,
-                    suggested_action="An administrator should review the available evidence.",
-                    admin_review_required=True,
+                    suggested_action=(
+                        "An administrator should review the available evidence."
+                        if result.verdict == "NOT_SUPPORTED"
+                        else "Consider adding clearer supporting context."
+                    ),
+                    admin_review_required=result.verdict == "NOT_SUPPORTED",
                 )
             )
         return findings

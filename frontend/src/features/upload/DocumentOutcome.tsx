@@ -12,6 +12,8 @@ type Props = {
   review?: ContributorReviewDetails;
   onDecision?: (action: "ACCEPT" | "DECLINE") => void;
   isDeciding?: boolean;
+  decisionAction?: "ACCEPT" | "DECLINE" | null;
+  onRetry?: () => void;
 };
 
 type Outcome = {
@@ -79,6 +81,9 @@ const progress = [
   ["Adding approved knowledge", "approved"],
 ] as const;
 
+const limitedVerificationMessage =
+  "External references could not be checked right now. The document was accepted based on the available evidence.";
+
 function progressState(status: KnowledgeDocument["status"], stage: (typeof progress)[number][1]) {
   const index = progress.findIndex(([, id]) => id === stage);
   const activeIndex =
@@ -93,7 +98,14 @@ function progressState(status: KnowledgeDocument["status"], stage: (typeof progr
   return "pending";
 }
 
-export function DocumentOutcome({ document, review, onDecision, isDeciding }: Props) {
+export function DocumentOutcome({
+  document,
+  review,
+  onDecision,
+  isDeciding,
+  decisionAction,
+  onRetry,
+}: Props) {
   const reducedMotion = useReducedMotion();
   const outcome = outcomes[document.status];
   const final = !["UPLOADED", "PROCESSING", "VALIDATING"].includes(document.status);
@@ -103,6 +115,18 @@ export function DocumentOutcome({ document, review, onDecision, isDeciding }: Pr
   const actionableFindings = document.validation_findings.filter(
     (finding) => finding.severity !== "INFO",
   );
+  const isApproved = document.status === "APPROVED";
+  const isFailed = document.status === "FAILED";
+  const limitedVerification =
+    isApproved && actionableFindings.some((finding) => finding.code === "GROUNDING_FAILED");
+  const approvedSuggestions = actionableFindings.filter(
+    (finding) => finding.code !== "GROUNDING_FAILED",
+  );
+  const reviewBlockers = review?.finding
+    ? [review.finding]
+    : actionableFindings.filter((finding) => finding.severity === "BLOCKING");
+  const findingsForAttention =
+    document.status === "CONTRIBUTOR_REVIEW_REQUIRED" ? reviewBlockers : actionableFindings;
 
   return (
     <motion.section
@@ -132,7 +156,7 @@ export function DocumentOutcome({ document, review, onDecision, isDeciding }: Pr
             animate={{ opacity: 1 }}
             transition={{ duration: reducedMotion ? 0 : 0.3 }}
           >
-            {document.analysis && (
+            {!isFailed && document.analysis && (
               <ReportSection title="What this resource covers">
                 <p className="report-summary">{document.analysis.summary}</p>
                 {document.analysis.topics.length > 0 && (
@@ -145,44 +169,50 @@ export function DocumentOutcome({ document, review, onDecision, isDeciding }: Pr
               </ReportSection>
             )}
 
-            {informationalFindings.length > 0 && (
+            {!isFailed && informationalFindings.length > 0 && (
               <ReportSection title="What we found">
                 <FindingsSection findings={informationalFindings} />
               </ReportSection>
             )}
 
-            {actionableFindings.length > 0 && (
-              <ReportSection title="What needs attention">
-                <p className="report-intro">
-                  These are the points that influenced the decision for this resource.
-                </p>
-                <FindingsSection findings={actionableFindings} compact />
+            {!isFailed &&
+              (isApproved
+                ? approvedSuggestions.length > 0 && (
+                    <ReportSection title="Suggestions for improvement">
+                      <p className="report-intro">
+                        These optional suggestions did not prevent this resource from being added to
+                        your knowledge base.
+                      </p>
+                      <FindingsSection findings={approvedSuggestions} compact />
+                    </ReportSection>
+                  )
+                : findingsForAttention.length > 0 && (
+                    <ReportSection title="What needs attention">
+                      <p className="report-intro">
+                        These are the points that influenced the decision for this resource.
+                      </p>
+                      <FindingsSection findings={findingsForAttention} compact />
+                    </ReportSection>
+                  ))}
+
+            {!isFailed && limitedVerification && (
+              <ReportSection title="External references">
+                <p className="report-intro">{limitedVerificationMessage}</p>
               </ReportSection>
             )}
 
-            {document.analysis?.claims.length ? (
-              <ReportSection title="Important ideas">
-                <div className="idea-list">
-                  {document.analysis.claims.map((claim) => (
-                    <article key={claim.text}>
-                      <p>{claim.text}</p>
-                    </article>
-                  ))}
-                </div>
-              </ReportSection>
-            ) : null}
-
-            {document.grounded_claim_verifications?.length ? (
+            {!isFailed && document.grounded_claim_verifications?.length ? (
               <ReportSection title="External references">
                 <EvidenceSection verifications={document.grounded_claim_verifications} />
               </ReportSection>
             ) : null}
 
-            {review && onDecision ? (
+            {!isFailed && review && onDecision ? (
               <ContributorReviewPanel
                 review={review}
                 onDecision={onDecision}
                 isDeciding={isDeciding}
+                decisionAction={decisionAction}
               />
             ) : (
               <ReportSection title="What happens next">
@@ -195,6 +225,11 @@ export function DocumentOutcome({ document, review, onDecision, isDeciding }: Pr
                         ? "You can return with a clearer or more relevant GenAI learning resource whenever you are ready."
                         : "Please try this resource again shortly. It has not been added to search."}
                 </p>
+                {document.status === "FAILED" && onRetry && (
+                  <button className="button button-quiet" type="button" onClick={onRetry}>
+                    Choose another resource
+                  </button>
+                )}
               </ReportSection>
             )}
           </motion.div>
@@ -296,15 +331,24 @@ function ContributorReviewPanel({
   review,
   onDecision,
   isDeciding,
+  decisionAction,
 }: {
   review: ContributorReviewDetails;
   onDecision: (action: "ACCEPT" | "DECLINE") => void;
   isDeciding?: boolean;
+  decisionAction?: "ACCEPT" | "DECLINE" | null;
 }) {
   return (
     <section className="contributor-review-panel" aria-labelledby="review-panel-heading">
       <h3 id="review-panel-heading">We need your input.</h3>
       <p>{review.finding.explanation}</p>
+      {isDeciding && (
+        <p className="review-decision-status" role="status" aria-live="polite">
+          {decisionAction === "ACCEPT"
+            ? "Applying your update and adding the resource. This may take a few seconds to a few minutes."
+            : "Saving your decision. This may take a few seconds."}
+        </p>
+      )}
       <div className="suggestion-comparison">
         <div>
           <span>Current value</span>
@@ -322,14 +366,18 @@ function ContributorReviewPanel({
           disabled={isDeciding}
           onClick={() => onDecision("ACCEPT")}
         >
-          {isDeciding ? "Saving your decision…" : "Accept suggestion and add"}
+          {isDeciding && decisionAction === "ACCEPT"
+            ? "Applying your update…"
+            : "Accept suggestion and add"}
         </button>
         <button
           className="button button-quiet"
           disabled={isDeciding}
           onClick={() => onDecision("DECLINE")}
         >
-          Do not add this resource
+          {isDeciding && decisionAction === "DECLINE"
+            ? "Saving your decision…"
+            : "Do not add this resource"}
         </button>
       </div>
     </section>

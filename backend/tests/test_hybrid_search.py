@@ -1,5 +1,6 @@
 import pytest
 
+from app.core.config import Settings
 from app.documents.models import DocumentStatus
 from app.search.hybrid_search import HybridSearchError, HybridSearchService
 
@@ -35,6 +36,16 @@ def service(
 ) -> tuple[HybridSearchService, FakeSearchSession]:
     session = FakeSearchSession(keyword_rows or [], vector_rows or [])
     return HybridSearchService(session, embedder or FakeEmbedder()), session  # type: ignore[arg-type]
+
+
+def service_with_similarity_threshold(
+    vector_rows: list[tuple[object, ...]], similarity: float = 0.6
+) -> HybridSearchService:
+    return HybridSearchService(
+        FakeSearchSession([], vector_rows),  # type: ignore[arg-type]
+        FakeEmbedder(),
+        Settings(minimum_vector_similarity=similarity),
+    )
 
 
 def test_search_queries_only_approved_documents() -> None:
@@ -129,6 +140,53 @@ def test_empty_vector_results_do_not_hide_keyword_matches() -> None:
     search, _ = service(keyword_rows=[("document-1", "RAG", "keyword excerpt", 0, 0.8)])
 
     assert [result.document_id for result in search.search("retrieval")] == ["document-1"]
+
+
+def test_relevant_semantic_matches_meet_the_similarity_floor() -> None:
+    search = service_with_similarity_threshold(
+        [("document-1", "Evaluation", "relevant excerpt", 0, 0.78)]
+    )
+
+    assert [result.document_id for result in search.search("assess grounded model answers")] == [
+        "document-1"
+    ]
+
+
+def test_paraphrased_semantic_matches_meet_the_similarity_floor() -> None:
+    search = service_with_similarity_threshold(
+        [("document-1", "RAG", "paraphrased excerpt", 0, 0.63)]
+    )
+
+    assert [result.document_id for result in search.search("retrieve context before answering")] == [
+        "document-1"
+    ]
+
+
+@pytest.mark.parametrize("similarity", [0.5, 0.52])
+def test_low_similarity_vector_matches_are_not_returned(similarity: float) -> None:
+    search = service_with_similarity_threshold(
+        [("document-1", "Unrelated", "unrelated excerpt", 0, similarity)]
+    )
+
+    assert search.search("unrelated query") == []
+
+
+def test_special_character_query_returns_no_results_without_embedding() -> None:
+    embedder = FakeEmbedder()
+    search, _ = service(embedder=embedder)
+
+    assert search.search("#$%^&*()") == []
+    assert embedder.queries == []
+
+
+def test_similarity_at_the_configured_floor_is_included() -> None:
+    search = service_with_similarity_threshold(
+        [("document-1", "Borderline", "borderline excerpt", 0, 0.6)]
+    )
+
+    assert [result.document_id for result in search.search("borderline relevant query")] == [
+        "document-1"
+    ]
 
 
 def test_empty_search_results_are_returned_as_an_empty_list() -> None:

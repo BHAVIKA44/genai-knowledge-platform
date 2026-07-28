@@ -81,17 +81,15 @@ class KnowledgeQualityEngine:
             blocking_issues=blocking_issues,
             warning_count=warning_count,
             overall_confidence=overall_confidence,
-            recommended_routing=self._route(blocking_issues, warning_count, overall_confidence),
+            recommended_routing=self._route(blocking_issues, overall_confidence),
             detected_topics=sorted(topics),
         )
 
     def _route(
-        self, blocking_issues: list[QualityFinding], warning_count: int, overall_confidence: float
+        self, blocking_issues: list[QualityFinding], overall_confidence: float
     ) -> RecommendedRouting:
         if blocking_issues:
             return RecommendedRouting.REJECTED
-        if warning_count:
-            return RecommendedRouting.CONTRIBUTOR_REVIEW_REQUIRED
         if overall_confidence < self.low_confidence_review_threshold:
             return RecommendedRouting.ADMIN_REVIEW_REQUIRED
         return RecommendedRouting.APPROVED
