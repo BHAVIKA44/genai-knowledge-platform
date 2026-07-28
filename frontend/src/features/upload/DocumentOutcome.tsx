@@ -114,13 +114,12 @@ export function DocumentOutcome({ document, review, onDecision, isDeciding }: Pr
     >
       <header className="decision-hero">
         <div>
-          <p className="report-label">{final ? "Review complete" : "Review in progress"}</p>
           <h2>{outcome.title}</h2>
           <p>{outcome.description}</p>
         </div>
         <div className="document-meta">
           <FileText size={16} aria-hidden="true" />
-          <span>{document.source_filename}</span>
+          <span title={document.source_filename}>{document.source_filename}</span>
         </div>
       </header>
 
@@ -247,7 +246,7 @@ function FindingsSection({
   return (
     <div className={`findings-list${compact ? " compact" : ""}`}>
       {findings.map((finding) => (
-        <article key={finding.code}>
+        <article className={`severity-${finding.severity.toLowerCase()}`} key={finding.code}>
           <span
             className={`finding-marker severity-${finding.severity.toLowerCase()}`}
             aria-hidden="true"
@@ -304,7 +303,6 @@ function ContributorReviewPanel({
 }) {
   return (
     <section className="contributor-review-panel" aria-labelledby="review-panel-heading">
-      <p className="report-label">A shared decision</p>
       <h3 id="review-panel-heading">We need your input.</h3>
       <p>{review.finding.explanation}</p>
       <div className="suggestion-comparison">

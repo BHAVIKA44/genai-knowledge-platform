@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { FileText, Upload, X } from "lucide-react";
+import { ChevronDown, FileText, Upload, X } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 
 type Props = { onSubmit: (file: File, title: string) => void; isSubmitting: boolean };
@@ -51,6 +51,11 @@ export function KnowledgeUploadPanel({ onSubmit, isSubmitting }: Props) {
             <p className="dropzone-copy">
               Drag and drop, or <span>choose a file</span> from your computer.
             </p>
+            <div className="accepted-format-badges" aria-hidden="true">
+              <span>PDF</span>
+              <span>.MD</span>
+              <span>.TXT</span>
+            </div>
           </>
         ) : (
           <div className="selected-file" onClick={(event) => event.stopPropagation()}>
@@ -98,11 +103,46 @@ export function KnowledgeUploadPanel({ onSubmit, isSubmitting }: Props) {
             disabled={isSubmitting}
           />
         </label>
-        <p className="upload-guidance">
-          <strong>PDF, Markdown, or text</strong>
-          <span>Up to 10 MB · Up to 50 PDF pages · English GenAI learning material</span>
-        </p>
       </div>
+      <details className="upload-requirements">
+        <summary>
+          <span>SYSTEM REQUIREMENTS &amp; CONSTRAINTS</span>
+          <ChevronDown size={15} aria-hidden="true" />
+        </summary>
+        <div>
+          <section>
+            <p>Upload limits</p>
+            <ul>
+              <li>Up to 10 MB</li>
+              <li>PDFs up to 50 pages</li>
+              <li>Digital PDFs only</li>
+            </ul>
+          </section>
+          <section>
+            <p>Content requirements</p>
+            <ul>
+              <li>English GenAI learning material</li>
+              <li>Content needs at least 50 meaningful characters</li>
+              <li>Digital PDFs need selectable text</li>
+            </ul>
+          </section>
+          <section>
+            <p>Review and availability</p>
+            <ul>
+              <li>Title is optional</li>
+              <li>Exact duplicate files are rejected</li>
+              <li>Resources may require review before becoming searchable</li>
+              <li>Only accepted resources become searchable</li>
+            </ul>
+          </section>
+          <section>
+            <p>Not supported</p>
+            <ul>
+              <li>images, DOCX, HTML, or scanned PDFs</li>
+            </ul>
+          </section>
+        </div>
+      </details>
       <button
         disabled={!file || isSubmitting}
         onClick={() => file && onSubmit(file, title)}

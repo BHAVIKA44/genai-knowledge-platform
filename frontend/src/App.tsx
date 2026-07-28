@@ -7,8 +7,9 @@ import {
   getDocument,
   uploadDocument,
 } from "./api/documents";
-import { EditorialFooter, EditorialHero, KnowledgeStory, ProductHeader } from "./features/landing";
+import { EditorialHero, KnowledgeStory, ProductHeader } from "./features/landing";
 import { KnowledgeSearch } from "./features/search/KnowledgeSearch";
+import { SearchTerminalVisual } from "./features/search/SearchTerminalVisual";
 import { DocumentOutcome } from "./features/upload/DocumentOutcome";
 import { KnowledgeUploadPanel } from "./features/upload/KnowledgeUploadPanel";
 
@@ -62,37 +63,34 @@ export default function App() {
       <ProductHeader />
       <EditorialHero />
       <KnowledgeStory />
-      <section className="workspace-section" aria-labelledby="workspace-heading">
-        <div className="workspace-heading">
-          <p className="section-kicker">Learn and contribute</p>
-          <h2 id="workspace-heading">Learn from the community. Contribute to it.</h2>
-        </div>
-        <div className="workspace-grid">
-          <section className="workspace-column" id="search" aria-labelledby="learn-heading">
+      <section
+        className="workspace-section workspace-search-section"
+        id="search"
+        aria-labelledby="learn-heading"
+      >
+        <div className="search-discovery-layout">
+          <div className="workspace-column">
             <div className="workspace-column-heading">
-              <p className="section-kicker">Learn</p>
               <h3 id="learn-heading">Discover trusted GenAI knowledge</h3>
-              <p>
-                Search reviewed notes, papers, guides, and practical learning resources shared by
-                the community.
-              </p>
             </div>
             <KnowledgeSearch />
-          </section>
-          <section className="workspace-column" id="add-knowledge" aria-labelledby="share-heading">
-            <div className="workspace-column-heading">
-              <p className="section-kicker">Share</p>
-              <h3 id="share-heading">Add what you have learned</h3>
-              <p>
-                Share useful GenAI material and help others learn from resources, explanations, and
-                ideas worth keeping.
-              </p>
-            </div>
-            <KnowledgeUploadPanel
-              onSubmit={(file, title) => upload.mutate({ file, title })}
-              isSubmitting={upload.isPending}
-            />
-          </section>
+          </div>
+          <SearchTerminalVisual />
+        </div>
+      </section>
+      <section
+        className="workspace-section workspace-upload-section"
+        id="add-knowledge"
+        aria-labelledby="share-heading"
+      >
+        <div className="workspace-column">
+          <div className="workspace-column-heading">
+            <h3 id="share-heading">Add what you have learned</h3>
+          </div>
+          <KnowledgeUploadPanel
+            onSubmit={(file, title) => upload.mutate({ file, title })}
+            isSubmitting={upload.isPending}
+          />
         </div>
         {document.data && (
           <DocumentOutcome
@@ -108,7 +106,6 @@ export default function App() {
           </p>
         )}
       </section>
-      <EditorialFooter />
     </main>
   );
 }
