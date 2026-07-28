@@ -17,6 +17,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.5",
+    "react-markdown": "^10.1.0",
     "sonner": "^1.7.1"
   },
   "devDependencies": {

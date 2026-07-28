@@ -47,7 +47,9 @@ def test_review_details_are_available_only_while_review_is_required(service) -> 
 
 def test_blocking_title_correction_is_available_for_contributor_review(service) -> None:
     document = reviewed_document(service)
-    document.validation_findings[0]["severity"] = FindingSeverity.BLOCKING
+    document.validation_findings = [
+        {**document.validation_findings[0], "severity": FindingSeverity.BLOCKING}
+    ]
     service.session.add(document)
     service.session.commit()
 

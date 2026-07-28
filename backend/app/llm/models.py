@@ -53,3 +53,7 @@ class GroundedClaimVerification(BaseModel):
 
 class GroundedClaimAnalysis(BaseModel):
     verifications: list[GroundedClaimVerification]
+
+
+class GroundedKnowledgeAnswer(BaseModel):
+    answer: str = Field(min_length=1)

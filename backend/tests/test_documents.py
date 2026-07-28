@@ -91,16 +91,18 @@ def test_rejected_document_skips_analysis(service, analysis_client) -> None:
     assert analysis_client.calls == 0
 
 
-def test_missing_optional_title_uses_filename_fallback_and_is_approved(
+def test_missing_optional_title_routes_to_a_structured_title_correction(
     service, analysis_client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(service, "_index", lambda _: None)
     document = service.submit("rag_notes.md", VALID_GENAI_TEXT, "text/markdown", None)
     service.process(document.id, VALID_GENAI_TEXT)
     stored = service.session.get(KnowledgeDocument, document.id)
-    assert stored.status is DocumentStatus.APPROVED
+    assert stored.status is DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
     assert stored.title == "rag notes"
     assert stored.analysis_proposed_title == "Generated title"
+    assert stored.validation_findings[-1]["code"] == "TITLE_CORRECTION"
+    assert stored.validation_findings[-1]["suggested_value"] == "Generated title"
     assert analysis_client.calls == 1
 
 
@@ -334,12 +336,11 @@ def test_required_contributor_correction_routes_to_contributor_review(
             )
         ],
     )
-    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "RAG")
+    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", None)
     service.process(document.id, VALID_GENAI_TEXT)
-    assert (
-        service.session.get(KnowledgeDocument, document.id).status
-        is DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
-    )
+    stored = service.session.get(KnowledgeDocument, document.id)
+    assert stored.status is DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
+    assert any(finding["code"] == "TITLE_CORRECTION" for finding in stored.validation_findings)
 
 
 def test_unstructured_contributor_fix_routes_to_admin_review(

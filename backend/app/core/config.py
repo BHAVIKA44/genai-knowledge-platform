@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 10 * 1024 * 1024
     max_pdf_pages: int = 50
     max_document_chunks: int = Field(default=500, ge=1)
-    minimum_vector_similarity: float = Field(default=0.6, ge=-1, le=1)
-    min_meaningful_characters: int = 50
+    minimum_vector_similarity: float = Field(default=0.72, ge=-1, le=1)
+    min_meaningful_characters: int = 150
     low_confidence_review_threshold: float = 0.7
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.6-flash"

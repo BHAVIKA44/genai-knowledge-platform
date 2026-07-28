@@ -148,23 +148,27 @@ class DocumentIngestionService:
 
             analysis = self._analyze(document, text)
             semantic_findings = self._semantic_findings(analysis)
+            title_correction = self._title_correction(document, analysis)
+            processing_findings = [*semantic_findings, *title_correction]
             document.validation_findings = [
                 *document.validation_findings,
-                *(finding.model_dump() for finding in semantic_findings),
+                *(finding.model_dump() for finding in processing_findings),
             ]
             grounding_results, grounding_findings = self._ground_claims(analysis)
             document.validation_findings = [
                 *document.validation_findings,
                 *(finding.model_dump() for finding in grounding_findings),
             ]
-            requires_contributor_review = self._requires_contributor_review(analysis)
+            all_processing_findings = [*processing_findings, *grounding_findings]
+            requires_contributor_review = self._requires_contributor_review(processing_findings)
             has_unstructured_blocking_finding = any(
-                finding.severity is FindingSeverity.BLOCKING and not finding.suggested_value
-                for finding in semantic_findings + grounding_findings
+                finding.severity is FindingSeverity.BLOCKING and finding.code != "TITLE_CORRECTION"
+                for finding in all_processing_findings
             )
-            if any(
-                finding.admin_review_required for finding in semantic_findings + grounding_findings
-            ) or has_unstructured_blocking_finding:
+            if (
+                any(finding.admin_review_required for finding in all_processing_findings)
+                or has_unstructured_blocking_finding
+            ):
                 target_status = DocumentStatus.ADMIN_REVIEW_REQUIRED
             elif requires_contributor_review and target_status is DocumentStatus.APPROVED:
                 target_status = DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
@@ -277,19 +281,42 @@ class DocumentIngestionService:
                 admin_review_required=finding.admin_review_required,
             )
             for index, finding in enumerate(analysis.semantic_findings, start=1)
+            if not ("title" in finding.category.casefold() and analysis.proposed_title)
         ]
 
     @staticmethod
-    def _requires_contributor_review(analysis: KnowledgeAnalysis) -> bool:
+    def _requires_contributor_review(findings: list[QualityFinding]) -> bool:
         return any(
-            finding.severity == "BLOCKING"
-            and finding.contributor_fix_possible
-            and not finding.admin_review_required
-            and finding.suggested_improvement
-            and "title" in finding.category.casefold()
-            and analysis.proposed_title
-            for finding in analysis.semantic_findings
+            finding.code == "TITLE_CORRECTION"
+            and finding.severity is FindingSeverity.BLOCKING
+            and finding.suggested_value
+            for finding in findings
         )
+
+    def _title_correction(
+        self, document: KnowledgeDocument, analysis: KnowledgeAnalysis
+    ) -> list[QualityFinding]:
+        fallback_title = self._fallback_title(document.source_filename)
+        proposed_title = " ".join((analysis.proposed_title or "").split())
+        if (
+            document.title != fallback_title
+            or not proposed_title
+            or proposed_title.casefold() == fallback_title.casefold()
+        ):
+            return []
+        return [
+            QualityFinding(
+                code="TITLE_CORRECTION",
+                category=FindingCategory.METADATA,
+                severity=FindingSeverity.BLOCKING,
+                confidence=1,
+                title="A clearer title is needed",
+                explanation="Please confirm the suggested title before publication.",
+                suggested_action="Use the suggested title.",
+                original_value="",
+                suggested_value=proposed_title,
+            )
+        ]
 
     @staticmethod
     def _fallback_title(filename: str) -> str:

@@ -131,7 +131,7 @@ export function KnowledgeUploadPanel({ onSubmit, isSubmitting, error, resetKey =
             <p>Content requirements</p>
             <ul>
               <li>English GenAI learning material</li>
-              <li>Content needs at least 50 meaningful characters</li>
+              <li>Content needs at least 150 meaningful characters</li>
               <li>Digital PDFs need selectable text</li>
             </ul>
           </section>

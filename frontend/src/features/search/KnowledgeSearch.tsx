@@ -1,17 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowUpRight, Search } from "lucide-react";
-import { searchKnowledge } from "../../api/search";
+import ReactMarkdown from "react-markdown";
+import { answerKnowledge } from "../../api/search";
 
 export function KnowledgeSearch() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
   const search = useQuery({
     queryKey: ["knowledge-search", submittedQuery],
-    queryFn: () => searchKnowledge(submittedQuery ?? ""),
+    queryFn: () => answerKnowledge(submittedQuery ?? ""),
     enabled: Boolean(submittedQuery),
   });
-  const results = search.data ?? [];
+  const results = search.data?.results ?? [];
 
   function submitQuery() {
     const normalizedQuery = query.trim();
@@ -77,25 +78,35 @@ export function KnowledgeSearch() {
       )}
       {search.isSuccess && results.length === 0 && (
         <div className="search-empty-state search-no-results">
-          <p>No approved knowledge found.</p>
+          <p>{search.data.answer}</p>
           <span>Try a broader topic or add a resource to your knowledge base.</span>
         </div>
       )}
-      {results.length > 0 && (
-        <ol className="trusted-results" aria-label="Trusted knowledge search results">
-          {results.map((result) => (
-            <li key={result.document_id}>
-              <article>
-                <div className="result-topline">
-                  <span>Reviewed resource</span>
-                  <ArrowUpRight size={15} aria-hidden="true" />
-                </div>
-                <h3>{result.title}</h3>
-                <p>{result.snippet}</p>
-              </article>
-            </li>
-          ))}
-        </ol>
+      {search.isSuccess && results.length > 0 && (
+        <>
+          <section
+            className="search-answer"
+            aria-live="polite"
+            aria-label="Answer from trusted knowledge"
+          >
+            <p className="search-answer-label">Answer from reviewed knowledge</p>
+            <ReactMarkdown>{search.data.answer}</ReactMarkdown>
+          </section>
+          <ol className="trusted-results" aria-label="Supporting reviewed resources">
+            {results.map((result) => (
+              <li key={result.document_id}>
+                <article>
+                  <div className="result-topline">
+                    <span>Supporting resource</span>
+                    <ArrowUpRight size={15} aria-hidden="true" />
+                  </div>
+                  <h3>{result.title}</h3>
+                  <p>{result.snippet}</p>
+                </article>
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </div>
   );

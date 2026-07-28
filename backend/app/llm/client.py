@@ -9,10 +9,15 @@ from app.core.config import Settings
 from app.llm.models import (
     EvidenceSource,
     GroundedClaimAnalysis,
+    GroundedKnowledgeAnswer,
     KnowledgeAnalysis,
     KnowledgeClaim,
 )
-from app.llm.prompt import CLAIM_GROUNDING_PROMPT, KNOWLEDGE_EXTRACTION_PROMPT
+from app.llm.prompt import (
+    CLAIM_GROUNDING_PROMPT,
+    KNOWLEDGE_ANSWER_PROMPT,
+    KNOWLEDGE_EXTRACTION_PROMPT,
+)
 
 logger = structlog.get_logger()
 
@@ -131,6 +136,46 @@ class GeminiKnowledgeClient:
                 "gemini_grounding_attempt_failed",
                 model=self.model,
                 prompt_version=self.prompt_version,
+                attempt=attempt + 1,
+                failure_category=type(failure).__name__,
+                elapsed_ms=round((time.monotonic() - started_at) * 1000),
+            )
+            if isinstance(failure, GeminiConfigurationError) or attempt == self.max_retries:
+                raise failure
+        raise GeminiTransientError("Gemini request failed.")
+
+    def answer_question(self, question: str, context: str) -> str:
+        if not question.strip() or not context.strip():
+            raise GeminiInvalidResponseError("Question and context are required.")
+        if not self.api_key:
+            raise GeminiConfigurationError("Gemini API key is not configured.")
+        client = genai.Client(
+            api_key=self.api_key,
+            http_options={"timeout": int(self.timeout_seconds * 1000)},
+        )
+        for attempt in range(self.max_retries + 1):
+            started_at = time.monotonic()
+            failure: Exception
+            try:
+                response = client.models.generate_content(
+                    model=self.model,
+                    contents=KNOWLEDGE_ANSWER_PROMPT.format(question=question, context=context),
+                    config={"response_mime_type": "application/json"},
+                )
+                if not response.text:
+                    raise GeminiInvalidResponseError("Gemini returned an empty response.")
+                return GroundedKnowledgeAnswer.model_validate(json.loads(response.text)).answer
+            except GeminiInvalidResponseError as error:
+                failure = error
+            except (json.JSONDecodeError, ValueError):
+                failure = GeminiInvalidResponseError("Gemini returned invalid structured output.")
+            except TimeoutError:
+                failure = GeminiTimeoutError("Gemini request timed out.")
+            except Exception as error:
+                failure = self._classify_provider_error(error)
+            logger.warning(
+                "gemini_answer_attempt_failed",
+                model=self.model,
                 attempt=attempt + 1,
                 failure_category=type(failure).__name__,
                 elapsed_ms=round((time.monotonic() - started_at) * 1000),

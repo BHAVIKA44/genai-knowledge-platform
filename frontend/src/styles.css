@@ -2187,6 +2187,62 @@ h2 em {
   list-style: none;
 }
 
+.search-answer {
+  max-width: 860px;
+  margin-top: 36px;
+  padding: 28px 30px;
+  border: 1px solid rgb(56 189 248 / 0.18);
+  border-radius: 10px;
+  color: #dce3ec;
+  background: rgb(10 15 26 / 0.58);
+  box-shadow: 0 0 18px rgb(0 166 255 / 0.05);
+  overflow-wrap: anywhere;
+}
+
+.search-answer-label {
+  margin: 0 0 18px;
+  color: var(--blue-bright);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.search-answer > :not(.search-answer-label) {
+  max-width: 100%;
+  margin: 0 0 1rem;
+  line-height: 1.7;
+}
+
+.search-answer h1,
+.search-answer h2,
+.search-answer h3,
+.search-answer h4 {
+  color: #fff;
+  font-family: var(--body);
+  letter-spacing: -0.02em;
+}
+
+.search-answer ul,
+.search-answer ol {
+  padding-left: 1.25rem;
+}
+
+.search-answer pre {
+  max-width: 100%;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.search-answer code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
 .trusted-results li {
   border-top: 1px solid var(--border);
 }

@@ -23,3 +23,20 @@ and a concise explanation grounded in the available evidence.
 
 Claims:
 {claims}"""
+
+KNOWLEDGE_ANSWER_PROMPT = """Answer the user's question using only the reviewed knowledge below.
+Start with a direct answer to the question, then explain only the details relevant to the
+user's intent. Adapt the depth and structure to the question instead of summarizing every
+source. Do not mention reviewed knowledge, sources, retrieval, chunks, prompts, databases,
+providers, or internal processing. Do not use outside knowledge or invent facts.
+
+If the available information answers only part of the question, state the supported part
+clearly and say which part is not covered. Use concise Markdown only when it improves
+readability. Complete every sentence and end the answer cleanly.
+Return JSON with one field: answer.
+
+Question:
+{question}
+
+Reviewed knowledge:
+{context}"""

@@ -1,6 +1,6 @@
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-import re
 from typing import cast
 
 import structlog
@@ -15,6 +15,7 @@ from app.embeddings import DocumentEmbedder
 KEYWORD_WEIGHT = 0.5
 VECTOR_WEIGHT = 0.5
 SNIPPET_LENGTH = 280
+KEYWORD_SCORE_FRACTION = 0.25
 
 chunk_table = DocumentChunk.__table__  # type: ignore[attr-defined]
 document_table = KnowledgeDocument.__table__  # type: ignore[attr-defined]
@@ -36,6 +37,12 @@ class HybridSearchError(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class RetrievedKnowledge:
+    result: HybridSearchResult
+    content: str
+
+
 class HybridSearchService:
     def __init__(
         self,
@@ -48,6 +55,9 @@ class HybridSearchService:
         self.minimum_vector_similarity = (settings or get_settings()).minimum_vector_similarity
 
     def search(self, query: str) -> list[HybridSearchResult]:
+        return [item.result for item in self.retrieve(query)]
+
+    def retrieve(self, query: str) -> list[RetrievedKnowledge]:
         if not re.search(r"[\w]", query):
             return []
         try:
@@ -70,23 +80,26 @@ class HybridSearchService:
                 keyword_score = keyword_scores.get(document_id, 0.0)
                 vector_score = vector_scores.get(document_id, 0.0)
                 results.append(
-                    HybridSearchResult(
-                        document_id=document_id,
-                        title=document_hit[0],
-                        snippet=self._snippet(document_hit[1]),
-                        keyword_score=keyword_score,
-                        vector_score=vector_score,
-                        final_score=(keyword_score * KEYWORD_WEIGHT)
-                        + (vector_score * VECTOR_WEIGHT),
+                    RetrievedKnowledge(
+                        result=HybridSearchResult(
+                            document_id=document_id,
+                            title=document_hit[0],
+                            snippet=self._snippet(document_hit[1]),
+                            keyword_score=keyword_score,
+                            vector_score=vector_score,
+                            final_score=(keyword_score * KEYWORD_WEIGHT)
+                            + (vector_score * VECTOR_WEIGHT),
+                        ),
+                        content=document_hit[1],
                     )
                 )
             return sorted(
                 results,
-                key=lambda result: (
-                    -result.final_score,
-                    -result.keyword_score,
-                    -result.vector_score,
-                    result.document_id,
+                key=lambda item: (
+                    -item.result.final_score,
+                    -item.result.keyword_score,
+                    -item.result.vector_score,
+                    item.result.document_id,
                 ),
             )
         except HybridSearchError:
@@ -97,8 +110,13 @@ class HybridSearchService:
 
     def _keyword_hits(self, query: str) -> dict[str, tuple[str, str, int, float]]:
         tsquery = func.websearch_to_tsquery("english", query)
+        title_vector = func.to_tsvector(
+            "english",
+            func.concat_ws(" ", document_table.c.title, document_table.c.source_filename),
+        )
         text_vector = func.to_tsvector("english", chunk_table.c.text)
-        rank = func.ts_rank_cd(text_vector, tsquery)
+        search_vector = title_vector.op("||")(text_vector)
+        rank = func.ts_rank_cd(text_vector, tsquery) + (2 * func.ts_rank_cd(title_vector, tsquery))
         statement = (
             select(  # type: ignore[call-overload]
                 document_table.c.id,
@@ -109,11 +127,19 @@ class HybridSearchService:
             )
             .join(chunk_table, chunk_table.c.document_id == document_table.c.id)
             .where(document_table.c.status == DocumentStatus.APPROVED)
-            .where(text_vector.op("@@")(tsquery))
+            .where(search_vector.op("@@")(tsquery))
             .order_by(rank.desc(), document_table.c.id, chunk_table.c.position)
         )
         rows = cast(Iterable[SearchRow], self.session.exec(statement))
-        return self._best_hits(rows)
+        hits = self._best_hits(rows)
+        if not hits:
+            return hits
+        minimum_score = max(hit[3] for hit in hits.values()) * KEYWORD_SCORE_FRACTION
+        return {
+            document_id: hit
+            for document_id, hit in hits.items()
+            if hit[3] >= minimum_score
+        }
 
     def _vector_hits(self, query_vector: list[float]) -> dict[str, tuple[str, str, int, float]]:
         distance = chunk_table.c.embedding.cosine_distance(query_vector)
@@ -131,11 +157,7 @@ class HybridSearchService:
             .order_by(distance, document_table.c.id, chunk_table.c.position)
         )
         rows = cast(Iterable[SearchRow], self.session.exec(statement))
-        # Cosine similarity is an absolute relevance signal; candidate-relative normalization
-        # must happen only after low-similarity vector matches are excluded.
-        return self._best_hits(
-            row for row in rows if row[4] >= self.minimum_vector_similarity
-        )
+        return self._best_hits(row for row in rows if row[4] >= self.minimum_vector_similarity)
 
     @staticmethod
     def _best_hits(rows: Iterable[SearchRow]) -> dict[str, tuple[str, str, int, float]]:

@@ -98,7 +98,8 @@ class ExtractionQualityValidator:
                         title="Document does not contain enough useful text",
                         explanation="The extracted content is below the minimum useful length.",
                         suggested_action=(
-                            "Upload a document with at least 50 meaningful characters."
+                            "Upload a document with at least "
+                            f"{self.minimum_meaningful_characters} meaningful characters."
                         ),
                     )
                 ]
