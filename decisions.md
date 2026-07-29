@@ -4,7 +4,7 @@
 
 The brief was to turn messy documents into structured, queryable data. I chose not to make parsing the differentiator. Parsing matters: without reliable extraction there is no useful knowledge product. PDF layout, text extraction, OCR, chunking, and embeddings already have mature tools. Building another parser would have been incremental engineering in a five-day exercise.
 
-The harder product question is what happens after text is extracted: **should this information become part of a shared knowledge base at all?** A polished retrieval experience can still be confidently wrong when its corpus contains irrelevant, duplicated, unreadable, or misleading material. Search quality therefore starts at admission, not ranking.
+The harder product question is what happens after text is extracted: **should this information become part of a shared knowledge base at all?** Even a good retrieval system will confidently return wrong answers if the knowledge it indexes is poor. Search quality starts at admission, not ranking.
 
 I framed the product as a trusted-knowledge workflow:
 
@@ -12,7 +12,7 @@ I framed the product as a trusted-knowledge workflow:
 ingestion → quality evaluation → review where needed → trusted indexing → queryable knowledge
 ```
 
-Trust is the differentiator; parsing is the enabler. Success is not maximum upload throughput or the largest corpus. It is a small, inspectable set of Generative AI learning resources that users can search with confidence. I did not optimize for broad document coverage, unconstrained chat, or fully automated publication.
+Trust is the differentiator; parsing is the enabler. Success is not maximum upload throughput or the largest corpus. It is a small, inspectable set of Generative AI learning resources that users can search with confidence. With five days, I wanted to build one part of the product exceptionally well instead of building many features halfway. I did not optimize for broad document coverage, unconstrained chat, or fully automated publication.
 
 ## 2. Product principles
 
@@ -36,11 +36,11 @@ I deferred a durable distributed queue, a full admin-review workspace, broad for
 
 ## 4. Knowledge Quality Engine
 
-The Knowledge Quality Engine is the admission boundary between raw source material and searchable knowledge. It returns typed findings and a recommended route.
+The Knowledge Quality Engine is the admission boundary between raw source material and searchable knowledge. It returns structured findings and a recommended route.
 
-The evaluation is layered. Cheap, deterministic checks run before parsing-intensive or provider-backed work: extension and MIME agreement, non-empty input, size, PDF page count, content length, English-language signal, GenAI relevance, professional-profile detection, and SHA-256 identity. This avoids spending provider calls and embedding work on files that are plainly outside scope or unusable.
+The evaluation is layered. Cheap, deterministic checks run before parsing or LLM analysis: extension and MIME agreement, non-empty input, size, PDF page count, content length, English-language signal, GenAI relevance, professional-profile detection, and SHA-256 identity. This avoids spending provider calls and embedding work on files that are plainly outside scope or unusable.
 
-The semantic stage produces structured topics, claims, and findings. The application then applies explicit routing boundaries:
+The semantic stage produces structured topics, claims, and findings. The application then decides where the document goes:
 
 | Outcome | Decision boundary |
 | --- | --- |
@@ -74,7 +74,7 @@ I used Docling rather than creating a parser. For PDFs, OCR is disabled: a scann
 
 Uploaded bytes are stored under generated keys rather than user filenames. The original filename is metadata, not a filesystem path. Docker Compose mounts a named source-storage volume at the configured storage root, so recreating the backend does not orphan source records. PostgreSQL remains the system of record for document metadata, findings, analysis, review decisions, and lifecycle state.
 
-Exact duplicate detection is content identity, not presentation identity. The service calculates SHA-256 from the uploaded bytes before expensive processing. Same bytes under a different filename are duplicates; the same filename with changed bytes is a new submission. Active and approved duplicates are rejected. Rejected and failed submissions are intentionally retryable: their old source and chunks are removed before the new version is stored. Filename comparison was rejected because it would both reject legitimate revisions and miss identical files with different names.
+Exact duplicate detection uses content, not filenames. The service calculates SHA-256 from the uploaded bytes before expensive processing. Same bytes under a different filename are duplicates; the same filename with changed bytes is a new submission. Active and approved duplicates are rejected. Rejected and failed submissions are retryable: their old source and chunks are removed before the new version is stored. I rejected filename comparison because it would reject legitimate revisions and miss identical files with different names.
 
 Documents and chunks are separate records. Chunks carry position, text, source context, embedding metadata, and a 384-dimensional vector. A foreign key with cascade deletion and a unique document-position constraint preserve publication integrity. Alembic migrations create the lifecycle, review, source-storage, grounded-verification, and vector schema.
 
@@ -86,15 +86,13 @@ Precision is the more important trade-off for this product. A broad keyword fall
 
 The answer endpoint reuses retrieval rather than creating a second search path. It selects approved chunks, bounds assembled context to 12,000 characters, and asks the configured Gemini client to answer only from that context. Supporting resource cards are returned alongside the answer so users can see the reviewed material behind it.
 
-The current release intentionally has a reviewed-only answer policy. This product is not trying to be a general chatbot; its value is that users know where an answer comes from. If retrieval finds no sufficiently relevant approved knowledge, it says so rather than using general model knowledge. I give up some answer coverage to keep a clear trust boundary and prevent users from confusing reviewed and unreviewed information. A clearly labelled model-knowledge fallback may be useful later. The prompt requires partial answers to say what is not covered, and the UI renders the complete Markdown answer rather than clipping it.
+For this 5 day exercise, I deliberately chose reviewed-only answers. It gives the product a simple, trustworthy boundary: users know answers come from approved material, not an unconstrained chatbot. If retrieval finds no sufficiently relevant knowledge, the product says so. I accepted lower answer coverage to avoid confusing reviewed and unreviewed information. Once the reviewed knowledge path is mature, a clearly labelled model-knowledge fallback is a natural next step. The prompt requires partial answers to say what is not covered, and the UI renders the complete Markdown answer rather than clipping it.
 
 ## 8. LLM and external verification
 
-The backend uses the Google GenAI SDK with a configurable Gemini Flash model (the current default is `gemini-3.6-flash`). I chose it for structured JSON output, practical latency for an interactive vertical slice, and a simple provider boundary. Pydantic validates analysis, claim, and answer outputs before application code uses them.
+The backend uses the Google GenAI SDK with a configurable Gemini Flash model (the current default is `gemini-3.6-flash`). I needed structured output for analysis and answer generation, and Google Search Grounding for selected claims. Gemini provided both through one provider. Choosing Claude or OpenAI would also mean adding a separate search provider, increasing the architecture I had to operate. With five days available, I spent that effort on the Knowledge Quality Engine instead of search infrastructure. Pydantic validates analysis, claim, and answer outputs before application code uses them.
 
 Google Search Grounding is used selectively for time-sensitive or externally verifiable claims. It collects evidence; application code makes the final route. External verification can be quota-limited or unavailable, so an outage means missing additional evidence, not automatic invalidity. Provider errors are mapped to safe application errors and sanitized logs. The UI never receives a raw SDK object, provider payload, credential, or provider error detail.
-
-I considered Claude, OpenAI models, and a separate external-search provider. They may be reasonable alternatives, but changing provider would not improve the core architectural choice. The useful boundary is the typed client contract, not a provider-specific abstraction hierarchy.
 
 ## 9. Frontend and UX decisions
 
