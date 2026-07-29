@@ -110,6 +110,12 @@ I chose PostgreSQL with pgvector because lifecycle state, metadata, lexical sear
 
 Docker provides reproducible local behavior and packages the CPU-only BGE model plus Docling artifacts needed for offline digital-PDF parsing. The image is larger and slower to build than a thin API container; that trade-off avoids runtime Hugging Face downloads. Compose persists database and source-storage volumes across backend recreation.
 
+### Abstractions only where they added value
+
+I did not add interfaces or abstractions everywhere. I introduced them only around parts that are likely to change, such as the LLM client, document parser, embeddings, and retrieval. These depend on external libraries or providers, so keeping them behind clear boundaries makes them easier to replace and test.
+
+For the core business logic, I kept the code direct. The document lifecycle, review rules, and routing are specific to this product, so extra abstractions would have added complexity without making the code easier to maintain.
+
 ## 11. Reliability and failure handling
 
 The API has a typed error envelope and maps domain failures to user-safe messages. Known failures such as unsupported type, unreadable PDF, duplicate submission, invalid lifecycle transition, and search failure remain explicit. Unexpected failures use a generic safe message. Processing failure is recorded as `FAILED`, preserving the distinction from a quality rejection.
