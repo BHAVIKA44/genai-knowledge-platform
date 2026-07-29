@@ -1,7 +1,7 @@
 import re
-from collections.abc import Iterable
+from collections.abc import Hashable, Iterable
 from dataclasses import dataclass
-from typing import cast
+from typing import TypeVar, cast
 
 import structlog
 from sqlalchemy import func
@@ -21,6 +21,8 @@ chunk_table = DocumentChunk.__table__  # type: ignore[attr-defined]
 document_table = KnowledgeDocument.__table__  # type: ignore[attr-defined]
 logger = structlog.get_logger()
 type SearchRow = tuple[str, str, str, int, float]
+type ChunkKey = tuple[str, int]
+ScoreKey = TypeVar("ScoreKey", bound=Hashable)
 
 
 @dataclass(frozen=True)
@@ -55,7 +57,7 @@ class HybridSearchService:
         self.minimum_vector_similarity = (settings or get_settings()).minimum_vector_similarity
 
     def search(self, query: str) -> list[HybridSearchResult]:
-        return [item.result for item in self.retrieve(query)]
+        return self._unique_results(self.retrieve(query))
 
     def retrieve(self, query: str) -> list[RetrievedKnowledge]:
         if not re.search(r"[\w]", query):
@@ -65,20 +67,21 @@ class HybridSearchService:
             keyword_hits = self._keyword_hits(query)
             vector_hits = self._vector_hits(query_vector)
             keyword_scores = self._normalize_scores(
-                {document_id: hit[3] for document_id, hit in keyword_hits.items()}
+                {chunk_key: hit[3] for chunk_key, hit in keyword_hits.items()}
             )
             vector_scores = self._normalize_scores(
-                {document_id: hit[3] for document_id, hit in vector_hits.items()}
+                {chunk_key: hit[3] for chunk_key, hit in vector_hits.items()}
             )
             results = []
-            for document_id in keyword_hits.keys() | vector_hits.keys():
-                keyword_hit = keyword_hits.get(document_id)
-                vector_hit = vector_hits.get(document_id)
+            for chunk_key in keyword_hits.keys() | vector_hits.keys():
+                keyword_hit = keyword_hits.get(chunk_key)
+                vector_hit = vector_hits.get(chunk_key)
                 document_hit = keyword_hit or vector_hit
                 if document_hit is None:
                     continue
-                keyword_score = keyword_scores.get(document_id, 0.0)
-                vector_score = vector_scores.get(document_id, 0.0)
+                document_id, _ = chunk_key
+                keyword_score = keyword_scores.get(chunk_key, 0.0)
+                vector_score = vector_scores.get(chunk_key, 0.0)
                 results.append(
                     RetrievedKnowledge(
                         result=HybridSearchResult(
@@ -108,8 +111,20 @@ class HybridSearchService:
             logger.exception("hybrid_search_failed", failure_category=type(error).__name__)
             raise HybridSearchError("Search could not complete.") from error
 
-    def _keyword_hits(self, query: str) -> dict[str, tuple[str, str, int, float]]:
+    def _keyword_hits(self, query: str) -> dict[ChunkKey, tuple[str, str, int, float]]:
         tsquery = func.websearch_to_tsquery("english", query)
+        hits = self._keyword_hits_for_query(tsquery)
+        if hits:
+            return hits
+
+        terms = [term for term in re.findall(r"[A-Za-z0-9]+", query) if len(term) >= 3]
+        if len(terms) < 2:
+            return hits
+        return self._keyword_hits_for_query(func.to_tsquery("english", " | ".join(terms)))
+
+    def _keyword_hits_for_query(
+        self, tsquery: object
+    ) -> dict[ChunkKey, tuple[str, str, int, float]]:
         title_vector = func.to_tsvector(
             "english",
             func.concat_ws(" ", document_table.c.title, document_table.c.source_filename),
@@ -131,7 +146,7 @@ class HybridSearchService:
             .order_by(rank.desc(), document_table.c.id, chunk_table.c.position)
         )
         rows = cast(Iterable[SearchRow], self.session.exec(statement))
-        hits = self._best_hits(rows)
+        hits = self._chunk_hits(rows)
         if not hits:
             return hits
         minimum_score = max(hit[3] for hit in hits.values()) * KEYWORD_SCORE_FRACTION
@@ -141,7 +156,9 @@ class HybridSearchService:
             if hit[3] >= minimum_score
         }
 
-    def _vector_hits(self, query_vector: list[float]) -> dict[str, tuple[str, str, int, float]]:
+    def _vector_hits(
+        self, query_vector: list[float]
+    ) -> dict[ChunkKey, tuple[str, str, int, float]]:
         distance = chunk_table.c.embedding.cosine_distance(query_vector)
         similarity = (1 - distance).label("score")
         statement = (
@@ -157,20 +174,32 @@ class HybridSearchService:
             .order_by(distance, document_table.c.id, chunk_table.c.position)
         )
         rows = cast(Iterable[SearchRow], self.session.exec(statement))
-        return self._best_hits(row for row in rows if row[4] >= self.minimum_vector_similarity)
+        return self._chunk_hits(row for row in rows if row[4] >= self.minimum_vector_similarity)
 
     @staticmethod
-    def _best_hits(rows: Iterable[SearchRow]) -> dict[str, tuple[str, str, int, float]]:
-        hits: dict[str, tuple[str, str, int, float]] = {}
+    def _chunk_hits(rows: Iterable[SearchRow]) -> dict[ChunkKey, tuple[str, str, int, float]]:
+        hits: dict[ChunkKey, tuple[str, str, int, float]] = {}
         for document_id, title, text, position, score in rows:
             candidate = (title, text, position, score)
-            current = hits.get(document_id)
+            key = (document_id, position)
+            current = hits.get(key)
             if current is None or candidate[3] > current[3]:
-                hits[document_id] = candidate
+                hits[key] = candidate
         return hits
 
     @staticmethod
-    def _normalize_scores(scores: dict[str, float]) -> dict[str, float]:
+    def _unique_results(retrieved: list[RetrievedKnowledge]) -> list[HybridSearchResult]:
+        results: list[HybridSearchResult] = []
+        seen_document_ids: set[str] = set()
+        for item in retrieved:
+            if item.result.document_id in seen_document_ids:
+                continue
+            seen_document_ids.add(item.result.document_id)
+            results.append(item.result)
+        return results
+
+    @staticmethod
+    def _normalize_scores(scores: dict[ScoreKey, float]) -> dict[ScoreKey, float]:
         if not scores:
             return {}
         minimum = min(scores.values())

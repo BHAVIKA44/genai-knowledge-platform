@@ -23,7 +23,7 @@ class SearchAnswerService:
 
     def answer(self, question: str) -> SearchAnswer:
         retrieved = self.retrieval.retrieve(question)
-        results = [item.result for item in retrieved]
+        results = self.retrieval._unique_results(retrieved)
         if not retrieved:
             return SearchAnswer(
                 answer="No reviewed knowledge was found for this question.",

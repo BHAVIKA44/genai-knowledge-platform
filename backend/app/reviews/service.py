@@ -47,7 +47,7 @@ class ContributorReviewService:
 
         try:
             if action == "ACCEPT":
-                document.title = finding.suggested_value or ""
+                self._apply_correction(document, finding)
                 document.validation_findings = [
                     item
                     for item in document.validation_findings
@@ -82,7 +82,27 @@ class ContributorReviewService:
             DocumentChunkingService(),
             DocumentEmbedder(),
             DocumentChunkRepository(self.session),
-        ).index(document)
+        ).index(document, content_override=document.extracted_text)
+
+    @staticmethod
+    def _apply_correction(document: KnowledgeDocument, finding: QualityFinding) -> None:
+        if not finding.original_value or finding.suggested_value is None:
+            raise DomainError(
+                "NO_CORRECTION_AVAILABLE",
+                "This document does not have a correction ready for review.",
+                status_code=409,
+            )
+        text = document.extracted_text or ""
+        if finding.original_value not in text:
+            raise DomainError(
+                "CORRECTION_NO_LONGER_APPLIES",
+                "This correction is no longer available for this document.",
+                "Upload the resource again to review its current content.",
+                409,
+            )
+        document.extracted_text = text.replace(
+            finding.original_value, finding.suggested_value, 1
+        )
 
     def _get_document(self, document_id: str) -> KnowledgeDocument:
         document = self.session.get(KnowledgeDocument, document_id)

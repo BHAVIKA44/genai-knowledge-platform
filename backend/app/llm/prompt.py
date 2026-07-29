@@ -8,9 +8,10 @@ Each semantic finding must include category, severity (INFO, WARNING, or BLOCKIN
 explanation, suggested_improvement, contributor_fix_possible, and admin_review_required.
 Ground every result in the supplied text; do not add unsupported information or hidden reasoning.
 Normalize GenAI topics, extract important technical claims, and
-mark time-sensitive or future-verification claims. Identify only vague explanations,
-missing context,
-incomplete definitions, misleading wording, or technical ambiguity in the supplied document.
+mark time-sensitive or future-verification claims. Ignore title absence and minor editorial
+imperfections. Record a semantic finding only when the supplied text is materially misleading,
+unsafe, contradictory, or too ambiguous to evaluate safely. Set admin_review_required to true
+only for those material issues. Otherwise use INFO or WARNING for optional suggestions.
 
 Document:
 {text}"""

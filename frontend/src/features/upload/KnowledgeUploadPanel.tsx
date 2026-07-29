@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 type Props = {
   onSubmit: (file: File, title: string) => void;
+  onFileSelected: () => void;
   isSubmitting: boolean;
   error?: string | null;
   resetKey?: number;
@@ -15,7 +16,13 @@ function formatFileSize(size: number) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function KnowledgeUploadPanel({ onSubmit, isSubmitting, error, resetKey = 0 }: Props) {
+export function KnowledgeUploadPanel({
+  onSubmit,
+  onFileSelected,
+  isSubmitting,
+  error,
+  resetKey = 0,
+}: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const reducedMotion = useReducedMotion();
@@ -23,7 +30,16 @@ export function KnowledgeUploadPanel({ onSubmit, isSubmitting, error, resetKey =
     setFile(null);
     setTitle("");
   }, [resetKey]);
-  const onDrop = useCallback((accepted: File[]) => setFile(accepted[0] ?? null), []);
+  const onDrop = useCallback(
+    (accepted: File[]) => {
+      const nextFile = accepted[0];
+      if (!nextFile) return;
+      setFile(nextFile);
+      setTitle("");
+      onFileSelected();
+    },
+    [onFileSelected],
+  );
   const dropzone = useDropzone({
     onDrop,
     multiple: false,

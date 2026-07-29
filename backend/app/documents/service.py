@@ -73,13 +73,19 @@ class DocumentIngestionService:
         existing = self.session.exec(
             select(KnowledgeDocument).where(KnowledgeDocument.sha256 == digest)
         ).first()
-        if existing:
+        if existing and existing.status not in {DocumentStatus.FAILED, DocumentStatus.REJECTED}:
             raise DomainError(
                 "DUPLICATE_SUBMISSION",
-                "This exact document has already been uploaded.",
+                "The content of this document is already part of our knowledge base.",
                 "Please upload a different version if you made changes.",
                 409,
             )
+        if existing:
+            if existing.source_storage_key:
+                self.source_storage.delete(existing.source_storage_key)
+            DocumentChunkRepository(self.session).delete_chunks(existing.id)
+            self.session.delete(existing)
+            self.session.commit()
 
         display_name = Path(filename).name or "uploaded-document"
         source_key = self.source_storage.save(content, Path(display_name).suffix)
@@ -142,14 +148,16 @@ class DocumentIngestionService:
             self.session.commit()
 
             target_status = DocumentStatus(quality_result.recommended_routing)
-            if target_status is DocumentStatus.REJECTED:
+            if target_status in {
+                DocumentStatus.REJECTED,
+                DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED,
+            }:
                 self._complete_processing(document, target_status)
                 return
 
             analysis = self._analyze(document, text)
             semantic_findings = self._semantic_findings(analysis)
-            title_correction = self._title_correction(document, analysis)
-            processing_findings = [*semantic_findings, *title_correction]
+            processing_findings = semantic_findings
             document.validation_findings = [
                 *document.validation_findings,
                 *(finding.model_dump() for finding in processing_findings),
@@ -160,18 +168,8 @@ class DocumentIngestionService:
                 *(finding.model_dump() for finding in grounding_findings),
             ]
             all_processing_findings = [*processing_findings, *grounding_findings]
-            requires_contributor_review = self._requires_contributor_review(processing_findings)
-            has_unstructured_blocking_finding = any(
-                finding.severity is FindingSeverity.BLOCKING and finding.code != "TITLE_CORRECTION"
-                for finding in all_processing_findings
-            )
-            if (
-                any(finding.admin_review_required for finding in all_processing_findings)
-                or has_unstructured_blocking_finding
-            ):
+            if any(finding.admin_review_required for finding in all_processing_findings):
                 target_status = DocumentStatus.ADMIN_REVIEW_REQUIRED
-            elif requires_contributor_review and target_status is DocumentStatus.APPROVED:
-                target_status = DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
             self._persist_analysis(document, analysis, grounding_results, target_status)
         except DomainError as error:
             self._fail(document_id, error.code, error.message, error.action)
@@ -278,44 +276,13 @@ class DocumentIngestionService:
                     if "title" in finding.category.casefold() and analysis.proposed_title
                     else None
                 ),
-                admin_review_required=finding.admin_review_required,
+                admin_review_required=(
+                    finding.admin_review_required
+                    or finding.severity == FindingSeverity.BLOCKING
+                ),
             )
             for index, finding in enumerate(analysis.semantic_findings, start=1)
             if not ("title" in finding.category.casefold() and analysis.proposed_title)
-        ]
-
-    @staticmethod
-    def _requires_contributor_review(findings: list[QualityFinding]) -> bool:
-        return any(
-            finding.code == "TITLE_CORRECTION"
-            and finding.severity is FindingSeverity.BLOCKING
-            and finding.suggested_value
-            for finding in findings
-        )
-
-    def _title_correction(
-        self, document: KnowledgeDocument, analysis: KnowledgeAnalysis
-    ) -> list[QualityFinding]:
-        fallback_title = self._fallback_title(document.source_filename)
-        proposed_title = " ".join((analysis.proposed_title or "").split())
-        if (
-            document.title != fallback_title
-            or not proposed_title
-            or proposed_title.casefold() == fallback_title.casefold()
-        ):
-            return []
-        return [
-            QualityFinding(
-                code="TITLE_CORRECTION",
-                category=FindingCategory.METADATA,
-                severity=FindingSeverity.BLOCKING,
-                confidence=1,
-                title="A clearer title is needed",
-                explanation="Please confirm the suggested title before publication.",
-                suggested_action="Use the suggested title.",
-                original_value="",
-                suggested_value=proposed_title,
-            )
         ]
 
     @staticmethod
@@ -346,17 +313,7 @@ class DocumentIngestionService:
         except DomainError as error:
             if error.code != "GROUNDING_FAILED":
                 raise
-            return [], [
-                QualityFinding(
-                    code="GROUNDING_FAILED",
-                    category=FindingCategory.SEMANTIC_QUALITY,
-                    severity=FindingSeverity.WARNING,
-                    confidence=1,
-                    title="Claim verification could not finish",
-                    explanation="We could not verify the time-sensitive claims in this document.",
-                    suggested_action="External references could not be checked right now.",
-                )
-            ]
+            return [], []
         return results, self._grounding_findings(results)
 
     @staticmethod

@@ -1,5 +1,8 @@
 from dataclasses import dataclass
+from pathlib import Path
 
+from docling_core.types.doc.document import DoclingDocument
+from docling_core.types.doc.labels import DocItemLabel
 from sqlmodel import Session
 
 from app.documents.chunk_models import DocumentChunk
@@ -35,12 +38,19 @@ class DocumentIndexingService:
         self.embedder = embedder
         self.repository = repository
 
-    def index(self, document: KnowledgeDocument) -> DocumentIndexingResult:
+    def index(
+        self, document: KnowledgeDocument, content_override: str | None = None
+    ) -> DocumentIndexingResult:
         if not document.source_storage_key:
             raise DocumentIndexingError("Stored source is required for indexing.")
         try:
-            parsed = self.parser.parse(document.source_storage_key, document.document_type)
-            chunks = self.chunker.chunk(parsed.document)
+            if content_override is None:
+                parsed = self.parser.parse(document.source_storage_key, document.document_type)
+                source_document = parsed.document
+            else:
+                source_document = DoclingDocument(name=Path(document.source_filename).stem)
+                source_document.add_text(label=DocItemLabel.TEXT, text=content_override)
+            chunks = self.chunker.chunk(source_document)
             if not chunks:
                 raise DocumentIndexingError("No indexable document content was produced.")
             vectors = self.embedder.embed_documents([chunk.text for chunk in chunks])

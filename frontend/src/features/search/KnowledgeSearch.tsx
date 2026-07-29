@@ -13,7 +13,8 @@ export function KnowledgeSearch() {
     enabled: Boolean(submittedQuery),
   });
   const results = search.data?.results ?? [];
-  const formState = search.isFetching ? " is-loading" : search.isError ? " has-error" : " is-ready";
+  const isSearching = submittedQuery !== null && search.isFetching;
+  const formState = isSearching ? " is-loading" : search.isError ? " has-error" : " is-ready";
 
   function submitQuery() {
     const normalizedQuery = query.trim();
@@ -51,10 +52,10 @@ export function KnowledgeSearch() {
         />
         <button
           type="submit"
-          disabled={search.isFetching || !query.trim()}
+          disabled={isSearching || !query.trim()}
           className="button button-primary"
         >
-          {search.isFetching ? "Searching…" : "Search"}
+          {isSearching ? "Searching…" : "Search"}
         </button>
       </form>
 
@@ -64,7 +65,7 @@ export function KnowledgeSearch() {
           <p>Your reviewed resources will appear here when they are ready to search.</p>
         </div>
       )}
-      {search.isFetching && (
+      {isSearching && (
         <div className="search-loading" role="status">
           <p>Searching your knowledge…</p>
           <span />

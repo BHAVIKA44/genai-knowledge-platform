@@ -81,9 +81,6 @@ const progress = [
   ["Adding approved knowledge", "approved"],
 ] as const;
 
-const limitedVerificationMessage =
-  "External references could not be checked right now. The document was accepted based on the available evidence.";
-
 function progressState(status: KnowledgeDocument["status"], stage: (typeof progress)[number][1]) {
   const index = progress.findIndex(([, id]) => id === stage);
   const activeIndex =
@@ -113,20 +110,20 @@ export function DocumentOutcome({
     (finding) => finding.severity === "INFO",
   );
   const actionableFindings = document.validation_findings.filter(
-    (finding) => finding.severity !== "INFO",
+    (finding) => finding.severity !== "INFO" && finding.code !== "GROUNDING_FAILED",
   );
-  const isApproved = document.status === "APPROVED";
   const isFailed = document.status === "FAILED";
-  const limitedVerification =
-    isApproved && actionableFindings.some((finding) => finding.code === "GROUNDING_FAILED");
-  const approvedSuggestions = actionableFindings.filter(
-    (finding) => finding.code !== "GROUNDING_FAILED",
-  );
+  const isApproved = document.status === "APPROVED";
+  const approvedSuggestions = actionableFindings;
   const reviewBlockers = review?.finding
     ? [review.finding]
     : actionableFindings.filter((finding) => finding.severity === "BLOCKING");
   const findingsForAttention =
-    document.status === "CONTRIBUTOR_REVIEW_REQUIRED" ? reviewBlockers : actionableFindings;
+    document.status === "CONTRIBUTOR_REVIEW_REQUIRED"
+      ? reviewBlockers
+      : actionableFindings.filter(
+          (finding) => finding.severity === "BLOCKING" || finding.admin_review_required,
+        );
 
   return (
     <motion.section
@@ -194,12 +191,6 @@ export function DocumentOutcome({
                       <FindingsSection findings={findingsForAttention} compact />
                     </ReportSection>
                   ))}
-
-            {!isFailed && limitedVerification && (
-              <ReportSection title="External references">
-                <p className="report-intro">{limitedVerificationMessage}</p>
-              </ReportSection>
-            )}
 
             {!isFailed && document.grounded_claim_verifications?.length ? (
               <ReportSection title="External references">
@@ -341,6 +332,10 @@ function ContributorReviewPanel({
   return (
     <section className="contributor-review-panel" aria-labelledby="review-panel-heading">
       <h3 id="review-panel-heading">We need your input.</h3>
+      <p className="review-panel-intro">
+        I found a small issue I can correct automatically. If you agree, I’ll apply the change and
+        add this resource to your knowledge base.
+      </p>
       <p>{review.finding.explanation}</p>
       {isDeciding && (
         <p className="review-decision-status" role="status" aria-live="polite">

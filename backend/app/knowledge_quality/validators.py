@@ -1,6 +1,4 @@
 import re
-from pathlib import Path
-
 from app.core.config import Settings
 from app.knowledge_quality.models import (
     FindingCategory,
@@ -19,6 +17,21 @@ TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
     "Prompt Engineering": ("prompt engineering", "prompt", "few-shot"),
     "Agents": ("agent", "tool calling", "model context protocol", "mcp"),
 }
+PROFESSIONAL_PROFILE_MARKERS = (
+    "work experience",
+    "professional experience",
+    "employment history",
+    "education",
+    "projects",
+    "skills",
+    "experience",
+    "university",
+    "technical skills",
+    "certifications",
+    "curriculum vitae",
+    "resume",
+    "linkedin",
+)
 ENGLISH_MARKERS = {
     "a",
     "an",
@@ -41,29 +54,6 @@ ENGLISH_MARKERS = {
     "will",
     "with",
 }
-
-
-class MetadataValidator:
-    def validate(self, value: QualityValidationInput) -> ValidatorResult:
-        if value.title.strip():
-            return ValidatorResult()
-        return ValidatorResult(
-            findings=[
-                QualityFinding(
-                    code="MISSING_TITLE",
-                    category=FindingCategory.METADATA,
-                    severity=FindingSeverity.INFO,
-                    confidence=1,
-                    title="Title is missing",
-                    explanation="A title makes this knowledge easier to identify.",
-                    suggested_action=(
-                        "You can add a clear title to make this resource easier to identify."
-                    ),
-                    original_value="",
-                    suggested_value=Path(value.source_filename).stem.replace("_", " ").strip(),
-                )
-            ]
-        )
 
 
 class ExtractionQualityValidator:
@@ -125,10 +115,14 @@ class DomainRelevanceValidator:
                     )
                 ]
             )
+        normalized_text = value.extracted_text.casefold()
         topics = [
             topic
             for topic, keywords in TOPIC_KEYWORDS.items()
-            if any(keyword in value.extracted_text.lower() for keyword in keywords)
+            if any(
+                re.search(rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])", normalized_text)
+                for keyword in keywords
+            )
         ]
         if not topics:
             return ValidatorResult(
@@ -156,6 +150,57 @@ class DomainRelevanceValidator:
                 )
             ],
             detected_topics=topics,
+        )
+
+
+class LearningMaterialValidator:
+    def validate(self, value: QualityValidationInput) -> ValidatorResult:
+        normalized_text = value.extracted_text.casefold()
+        profile_markers = sum(marker in normalized_text for marker in PROFESSIONAL_PROFILE_MARKERS)
+        if profile_markers < 4:
+            return ValidatorResult()
+        return ValidatorResult(
+            findings=[
+                QualityFinding(
+                    code="NOT_LEARNING_MATERIAL",
+                    category=FindingCategory.DOMAIN_RELEVANCE,
+                    severity=FindingSeverity.BLOCKING,
+                    confidence=0.95,
+                    title="Document is not a GenAI learning resource",
+                    explanation=(
+                        "This appears to be a professional profile rather than material intended to teach "
+                        "a Generative AI topic."
+                    ),
+                    suggested_action="Upload a guide, note, paper, or technical learning resource.",
+                )
+            ]
+        )
+
+
+class DeterministicCorrectionValidator:
+    """Flags only mechanical, unambiguous corrections that need contributor consent."""
+
+    _repeated_word = re.compile(r"\b([a-zA-Z]{2,})\s+\1\b", re.IGNORECASE)
+
+    def validate(self, value: QualityValidationInput) -> ValidatorResult:
+        match = self._repeated_word.search(value.extracted_text)
+        if match is None:
+            return ValidatorResult()
+        word = match.group(1)
+        return ValidatorResult(
+            findings=[
+                QualityFinding(
+                    code="DETERMINISTIC_DUPLICATED_WORD",
+                    category=FindingCategory.EXTRACTION_QUALITY,
+                    severity=FindingSeverity.WARNING,
+                    confidence=1,
+                    title="A duplicated word needs your confirmation",
+                    explanation="The same word appears twice in a row, which is likely an accidental typo.",
+                    suggested_action="Confirm the correction before this resource is added.",
+                    original_value=match.group(0),
+                    suggested_value=word,
+                )
+            ]
         )
 
 

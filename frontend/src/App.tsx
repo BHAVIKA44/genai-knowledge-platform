@@ -97,6 +97,12 @@ export default function App() {
     setUploadResetKey((current) => current + 1);
   }
 
+  function clearPreviousOutcome() {
+    upload.reset();
+    setDocumentId(null);
+    setDecisionConfirmation(null);
+  }
+
   return (
     <main className="app-shell">
       <Toaster theme="dark" position="top-right" />
@@ -129,6 +135,7 @@ export default function App() {
           </div>
           <KnowledgeUploadPanel
             onSubmit={submitUpload}
+            onFileSelected={clearPreviousOutcome}
             isSubmitting={upload.isPending}
             error={upload.isError ? upload.error.message : null}
             resetKey={uploadResetKey}

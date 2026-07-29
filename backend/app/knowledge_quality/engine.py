@@ -14,9 +14,10 @@ from app.knowledge_quality.models import (
 )
 from app.knowledge_quality.validators import (
     DomainRelevanceValidator,
+    DeterministicCorrectionValidator,
     DuplicateValidator,
     ExtractionQualityValidator,
-    MetadataValidator,
+    LearningMaterialValidator,
 )
 
 logger = structlog.get_logger()
@@ -39,9 +40,10 @@ class KnowledgeQualityEngine:
             list(validators)
             if validators is not None
             else [
-                MetadataValidator(),
                 ExtractionQualityValidator(settings),
                 DomainRelevanceValidator(),
+                LearningMaterialValidator(),
+                DeterministicCorrectionValidator(),
                 DuplicateValidator(),
             ]
         )
@@ -81,15 +83,20 @@ class KnowledgeQualityEngine:
             blocking_issues=blocking_issues,
             warning_count=warning_count,
             overall_confidence=overall_confidence,
-            recommended_routing=self._route(blocking_issues, overall_confidence),
+            recommended_routing=self._route(ordered_findings, blocking_issues, overall_confidence),
             detected_topics=sorted(topics),
         )
 
     def _route(
-        self, blocking_issues: list[QualityFinding], overall_confidence: float
+        self,
+        findings: list[QualityFinding],
+        blocking_issues: list[QualityFinding],
+        overall_confidence: float,
     ) -> RecommendedRouting:
         if blocking_issues:
             return RecommendedRouting.REJECTED
+        if any(finding.code.startswith("DETERMINISTIC_") for finding in findings):
+            return RecommendedRouting.CONTRIBUTOR_REVIEW_REQUIRED
         if overall_confidence < self.low_confidence_review_threshold:
             return RecommendedRouting.ADMIN_REVIEW_REQUIRED
         return RecommendedRouting.APPROVED

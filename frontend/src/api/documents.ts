@@ -18,6 +18,7 @@ export type Finding = {
   suggested_action: string | null;
   original_value: string | null;
   suggested_value: string | null;
+  admin_review_required: boolean;
 };
 
 export type AnalysisClaim = {
