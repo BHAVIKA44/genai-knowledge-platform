@@ -12,7 +12,13 @@ I framed the product as a trusted-knowledge workflow:
 ingestion → quality evaluation → review where needed → trusted indexing → queryable knowledge
 ```
 
-Trust is the differentiator; parsing is the enabler. Success is not maximum upload throughput or the largest corpus. It is a small, inspectable set of Generative AI learning resources that users can search with confidence. With five days, I wanted to build one part of the product exceptionally well instead of building many features halfway. I did not optimize for broad document coverage, unconstrained chat, or fully automated publication.
+Trust is the differentiator; parsing is the enabler. Success is not maximum upload throughput or the largest corpus. It is a focused set of Generative AI learning resources that users can search with confidence. I did not optimize for broad document coverage, unconstrained chat, or fully automated publication.
+
+### Why I chose GenAI as the first domain
+
+After deciding to build a Knowledge Quality Engine, I considered invoices and medical documents. Trust matters in both, but defining “correct” would require domain rules, expert knowledge, external sources, and more time. In five days, I could not build a credible quality engine for either without oversimplifying the problem or pretending to verify more than the system could support.
+
+I chose GenAI learning resources because the domain is narrow enough to test quality decisions meaningfully. That let me focus on quality checks, evidence-backed validation, confidence gates, contributor and admin review, and approved-only search. This is not because GenAI knowledge is unimportant. It is an honest MVP boundary. The design can extend to regulated domains once proper rules and expert validation are available.
 
 ## 2. Product principles
 
@@ -28,11 +34,11 @@ Trust is the differentiator; parsing is the enabler. Success is not maximum uplo
 
 ## 3. Scope: what I built and what I deliberately did not build
 
-The implementation is a focused vertical slice for English-language Generative AI learning material. It supports digital PDFs, Markdown, and plain text; normalizes content; applies deterministic and semantic checks; persists document state; supports approval, rejection, contributor review, and admin review; indexes accepted content; and answers questions from reviewed knowledge.
+The implementation is a focused vertical slice for English-language Generative AI learning material. It supports digital PDFs, Markdown, and plain text; applies deterministic and semantic checks; persists document state; supports review outcomes; indexes accepted content; and answers questions from reviewed knowledge.
 
 I kept the input contract narrow. Images, scanned PDFs, DOCX, HTML, URLs, and pasted notes are not supported. Digital PDFs are parsed with OCR disabled, so a scan fails safely rather than producing unreliable text. The limits are a maximum file size of 10 MB, a maximum of 50 PDF pages, and at least 150 meaningful characters. A title is optional, and a Markdown heading can provide a fallback title.
 
-I deferred a durable distributed queue, a full admin-review workspace, broad format support, authentication and multi-tenancy, learned ranking, and a model-only answer fallback. They are sensible production evolutions, but not prerequisites for validating the central thesis: a knowledge base should decide what it trusts before it retrieves.
+I deferred a durable queue, a full admin-review workspace, broad format support, authentication and multi-tenancy, learned ranking, and a model-only answer fallback. They are sensible production evolutions, but not prerequisites for validating the central thesis: a knowledge base should decide what it trusts before it retrieves.
 
 ## 4. Knowledge Quality Engine
 
@@ -74,7 +80,7 @@ I used Docling rather than creating a parser. For PDFs, OCR is disabled: a scann
 
 Uploaded bytes are stored under generated keys rather than user filenames. The original filename is metadata, not a filesystem path. Docker Compose mounts a named source-storage volume at the configured storage root, so recreating the backend does not orphan source records. PostgreSQL remains the system of record for document metadata, findings, analysis, review decisions, and lifecycle state.
 
-Exact duplicate detection uses content, not filenames. The service calculates SHA-256 from the uploaded bytes before expensive processing. Same bytes under a different filename are duplicates; the same filename with changed bytes is a new submission. Active and approved duplicates are rejected. Rejected and failed submissions are retryable: their old source and chunks are removed before the new version is stored. I rejected filename comparison because it would reject legitimate revisions and miss identical files with different names.
+Exact duplicate detection uses SHA-256 from the uploaded bytes, not filenames. Same bytes under a different filename are duplicates; changed bytes are a new submission. Active and approved duplicates are rejected. Rejected and failed submissions are retryable after their old source and chunks are removed. Filename comparison would reject legitimate revisions and miss identical files with different names.
 
 Documents and chunks are separate records. Chunks carry position, text, source context, embedding metadata, and a 384-dimensional vector. A foreign key with cascade deletion and a unique document-position constraint preserve publication integrity. Alembic migrations create the lifecycle, review, source-storage, grounded-verification, and vector schema.
 
@@ -96,7 +102,7 @@ Google Search Grounding is used selectively for time-sensitive or externally ver
 
 ## 9. Frontend and UX decisions
 
-The frontend is a React and TypeScript single-page product surface, not an operations dashboard. TanStack Query owns server state for uploads, polling, reviews, and search; local state is limited to file selection, input, disclosure, and presentation concerns. React Dropzone, Sonner, Lucide, Framer Motion, and React Markdown are used where those libraries remove commodity work.
+The frontend is a React and TypeScript product surface, not an operations dashboard. TanStack Query owns upload, polling, review, and search state; local state is limited to file selection, input, disclosure, and presentation.
 
 The UX priority is legible state. Uploading clears the prior outcome; polling stops at terminal states; decision actions guard repeated requests; accepting or declining a review removes stale controls, resets the upload surface, and confirms the outcome. Errors are plain and actionable. Search hides stale answers while a new request is in flight and disables repeated submission until it finishes.
 
@@ -112,9 +118,7 @@ Docker provides reproducible local behavior and packages the CPU-only BGE model 
 
 ### Abstractions only where they added value
 
-I did not add interfaces or abstractions everywhere. I introduced them only around parts that are likely to change, such as the LLM client, document parser, embeddings, and retrieval. These depend on external libraries or providers, so keeping them behind clear boundaries makes them easier to replace and test.
-
-For the core business logic, I kept the code direct. The document lifecycle, review rules, and routing are specific to this product, so extra abstractions would have added complexity without making the code easier to maintain.
+I added boundaries only around change-prone external dependencies: the LLM client, parser, embeddings, and retrieval. The product-specific lifecycle, review rules, and routing stay direct because more abstraction would add complexity without improving maintenance.
 
 ## 11. Reliability and failure handling
 
@@ -122,7 +126,7 @@ The API has a typed error envelope and maps domain failures to user-safe message
 
 Multi-step contributor decisions are transactional: failed decisions roll back, and a successful approval indexes once. The ingestion path removes stored-source data if database persistence fails. Search is restricted to approved documents at query time, which protects retrieval even if a UI state is stale.
 
-The deliberate limitation is background execution. FastAPI `BackgroundTasks` keeps uploads responsive and is acceptable for a single-instance demo, but it is not a durable queue. A process failure can interrupt accepted work. I deferred a worker queue because it is the correct production choice but too much operational scope for five days. The next production step is a durable worker and queue with idempotent jobs, visibility, and retry policy.
+FastAPI `BackgroundTasks` keeps uploads responsive and is acceptable for a single-instance demo, but it is not durable. A process failure can interrupt accepted work. I deferred a worker queue because it adds too much operational scope for five days. The next production step is a durable worker and queue with idempotent jobs, visibility, and retry policy.
 
 ## 12. Alternatives considered and rejected
 
