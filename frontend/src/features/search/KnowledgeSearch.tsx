@@ -13,6 +13,7 @@ export function KnowledgeSearch() {
     enabled: Boolean(submittedQuery),
   });
   const results = search.data?.results ?? [];
+  const formState = search.isFetching ? " is-loading" : search.isError ? " has-error" : " is-ready";
 
   function submitQuery() {
     const normalizedQuery = query.trim();
@@ -32,7 +33,7 @@ export function KnowledgeSearch() {
 
   return (
     <div className="trusted-search">
-      <form className="trusted-search-form" onSubmit={submit}>
+      <form className={`trusted-search-form${formState}`} onSubmit={submit}>
         <label htmlFor="knowledge-search" className="sr-only">
           Search trusted knowledge
         </label>

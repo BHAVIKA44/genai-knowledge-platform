@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { BookOpenText, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import { DigitalHumanVisual } from "./DigitalHumanVisual";
 
 const navigationItems = [
@@ -143,6 +143,7 @@ export function KnowledgeStory() {
           <motion.article
             className="story-step"
             key={number}
+            style={{ "--pipeline-delay": `${index * 1.2}s` } as CSSProperties}
             initial={{ opacity: 0, y: reducedMotion ? 0 : 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.25 }}

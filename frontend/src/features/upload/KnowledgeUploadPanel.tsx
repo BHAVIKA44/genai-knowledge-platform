@@ -41,21 +41,22 @@ export function KnowledgeUploadPanel({ onSubmit, isSubmitting, error, resetKey =
           role: file ? undefined : "button",
           className: `document-dropzone${dropzone.isDragActive ? " is-active" : ""}${
             file ? " has-file" : ""
-          }${isSubmitting ? " is-disabled" : ""}`,
+          }${isSubmitting ? " is-disabled" : ""}${error ? " has-error" : ""}`,
         })}
       >
         <input {...dropzone.getInputProps()} />
         {!file ? (
           <>
-            <motion.div
-              className="dropzone-icon"
-              initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.88 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: reducedMotion ? 0 : 0.32 }}
-              aria-hidden="true"
-            >
-              <Upload size={22} />
-            </motion.div>
+            <div className="dropzone-icon-float" aria-hidden="true">
+              <motion.div
+                className="dropzone-icon"
+                initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.88 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: reducedMotion ? 0 : 0.32 }}
+              >
+                <Upload size={22} />
+              </motion.div>
+            </div>
             <p className="dropzone-title">Drop a GenAI learning resource here</p>
             <p className="dropzone-copy">
               Drag and drop, or <span>choose a file</span> from your computer.
