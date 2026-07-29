@@ -11,7 +11,8 @@ from app.llm.models import KnowledgeAnalysis, SemanticFinding
 
 VALID_GENAI_TEXT = (
     b"Large language models use transformer attention. Retrieval augmented generation uses "
-    b"embeddings and a vector database for grounded answers."
+    b"embeddings and a vector database for grounded answers. It retrieves relevant passages "
+    b"before a model responds, which helps people verify claims against reviewed context."
 )
 
 
@@ -91,18 +92,17 @@ def test_rejected_document_skips_analysis(service, analysis_client) -> None:
     assert analysis_client.calls == 0
 
 
-def test_missing_optional_title_routes_to_a_structured_title_correction(
+def test_missing_optional_title_is_approved_without_a_title_correction(
     service, analysis_client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(service, "_index", lambda _: None)
     document = service.submit("rag_notes.md", VALID_GENAI_TEXT, "text/markdown", None)
     service.process(document.id, VALID_GENAI_TEXT)
     stored = service.session.get(KnowledgeDocument, document.id)
-    assert stored.status is DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
+    assert stored.status is DocumentStatus.APPROVED
     assert stored.title == "rag notes"
     assert stored.analysis_proposed_title == "Generated title"
-    assert stored.validation_findings[-1]["code"] == "TITLE_CORRECTION"
-    assert stored.validation_findings[-1]["suggested_value"] == "Generated title"
+    assert not any(finding["code"] == "TITLE_CORRECTION" for finding in stored.validation_findings)
     assert analysis_client.calls == 1
 
 
@@ -228,7 +228,9 @@ def test_exact_duplicate_does_not_create_second_record(service) -> None:
     with pytest.raises(DomainError) as error:
         service.submit("two.txt", VALID_GENAI_TEXT, "text/plain", "Two")
     assert error.value.code == "DUPLICATE_SUBMISSION"
-    assert error.value.message == "This exact document has already been uploaded."
+    assert (
+        error.value.message == "The content of this document is already part of our knowledge base."
+    )
     assert error.value.action == "Please upload a different version if you made changes."
     assert len(service.session.exec(select(KnowledgeDocument)).all()) == 1
 
@@ -316,31 +318,17 @@ def test_materially_misleading_semantic_finding_requires_admin_review(
     )
 
 
-def test_required_contributor_correction_routes_to_contributor_review(
+def test_deterministic_contributor_correction_routes_to_contributor_review(
     service, analysis_client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    analysis_client.analysis = KnowledgeAnalysis(
-        proposed_title="RAG guide",
-        summary="A concise explanation of the document.",
-        topics=["RAG"],
-        claims=[],
-        semantic_findings=[
-            SemanticFinding(
-                category="Missing title",
-                severity="BLOCKING",
-                confidence=0.95,
-                explanation="The contributor needs to confirm a clear title before publication.",
-                suggested_improvement="Use the proposed title.",
-                contributor_fix_possible=True,
-                admin_review_required=False,
-            )
-        ],
-    )
-    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", None)
-    service.process(document.id, VALID_GENAI_TEXT)
+    content = VALID_GENAI_TEXT + b" The source is is ready for review."
+    document = service.submit("rag.md", content, "text/markdown", "RAG guide")
+    service.process(document.id, content)
     stored = service.session.get(KnowledgeDocument, document.id)
     assert stored.status is DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED
-    assert any(finding["code"] == "TITLE_CORRECTION" for finding in stored.validation_findings)
+    assert any(
+        finding["code"] == "DETERMINISTIC_DUPLICATED_WORD" for finding in stored.validation_findings
+    )
 
 
 def test_unstructured_contributor_fix_routes_to_admin_review(
@@ -373,7 +361,7 @@ def test_unstructured_contributor_fix_routes_to_admin_review(
     )
 
 
-def test_title_correction_with_another_blocker_routes_to_admin_review(
+def test_deterministic_correction_with_another_blocker_routes_to_admin_review(
     service, analysis_client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(service, "_index", lambda _: None)
@@ -383,15 +371,6 @@ def test_title_correction_with_another_blocker_routes_to_admin_review(
         topics=["RAG"],
         claims=[],
         semantic_findings=[
-            SemanticFinding(
-                category="Missing title",
-                severity="BLOCKING",
-                confidence=0.95,
-                explanation="The contributor needs to confirm a clear title before publication.",
-                suggested_improvement="Use the proposed title.",
-                contributor_fix_possible=True,
-                admin_review_required=False,
-            ),
             SemanticFinding(
                 category="Materially misleading claim",
                 severity="BLOCKING",
@@ -403,8 +382,9 @@ def test_title_correction_with_another_blocker_routes_to_admin_review(
             ),
         ],
     )
-    document = service.submit("rag.md", VALID_GENAI_TEXT, "text/markdown", "RAG")
-    service.process(document.id, VALID_GENAI_TEXT)
+    content = VALID_GENAI_TEXT + b" The source is is ready for review."
+    document = service.submit("rag.md", content, "text/markdown", "RAG")
+    service.process(document.id, content)
 
     assert (
         service.session.get(KnowledgeDocument, document.id).status

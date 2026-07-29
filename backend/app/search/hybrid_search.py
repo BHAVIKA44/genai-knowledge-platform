@@ -113,14 +113,7 @@ class HybridSearchService:
 
     def _keyword_hits(self, query: str) -> dict[ChunkKey, tuple[str, str, int, float]]:
         tsquery = func.websearch_to_tsquery("english", query)
-        hits = self._keyword_hits_for_query(tsquery)
-        if hits:
-            return hits
-
-        terms = [term for term in re.findall(r"[A-Za-z0-9]+", query) if len(term) >= 3]
-        if len(terms) < 2:
-            return hits
-        return self._keyword_hits_for_query(func.to_tsquery("english", " | ".join(terms)))
+        return self._keyword_hits_for_query(tsquery)
 
     def _keyword_hits_for_query(
         self, tsquery: object
@@ -150,11 +143,7 @@ class HybridSearchService:
         if not hits:
             return hits
         minimum_score = max(hit[3] for hit in hits.values()) * KEYWORD_SCORE_FRACTION
-        return {
-            document_id: hit
-            for document_id, hit in hits.items()
-            if hit[3] >= minimum_score
-        }
+        return {document_id: hit for document_id, hit in hits.items() if hit[3] >= minimum_score}
 
     def _vector_hits(
         self, query_vector: list[float]

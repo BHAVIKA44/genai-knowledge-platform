@@ -148,10 +148,7 @@ class DocumentIngestionService:
             self.session.commit()
 
             target_status = DocumentStatus(quality_result.recommended_routing)
-            if target_status in {
-                DocumentStatus.REJECTED,
-                DocumentStatus.CONTRIBUTOR_REVIEW_REQUIRED,
-            }:
+            if target_status is DocumentStatus.REJECTED:
                 self._complete_processing(document, target_status)
                 return
 
@@ -277,8 +274,7 @@ class DocumentIngestionService:
                     else None
                 ),
                 admin_review_required=(
-                    finding.admin_review_required
-                    or finding.severity == FindingSeverity.BLOCKING
+                    finding.admin_review_required or finding.severity == FindingSeverity.BLOCKING
                 ),
             )
             for index, finding in enumerate(analysis.semantic_findings, start=1)

@@ -13,8 +13,8 @@ from app.knowledge_quality.models import (
     ValidatorResult,
 )
 from app.knowledge_quality.validators import (
-    DomainRelevanceValidator,
     DeterministicCorrectionValidator,
+    DomainRelevanceValidator,
     DuplicateValidator,
     ExtractionQualityValidator,
     LearningMaterialValidator,

@@ -1,4 +1,5 @@
 import re
+
 from app.core.config import Settings
 from app.knowledge_quality.models import (
     FindingCategory,
@@ -119,10 +120,7 @@ class DomainRelevanceValidator:
         topics = [
             topic
             for topic, keywords in TOPIC_KEYWORDS.items()
-            if any(
-                re.search(rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])", normalized_text)
-                for keyword in keywords
-            )
+            if any(self._positive_keyword_match(normalized_text, keyword) for keyword in keywords)
         ]
         if not topics:
             return ValidatorResult(
@@ -152,6 +150,15 @@ class DomainRelevanceValidator:
             detected_topics=topics,
         )
 
+    @staticmethod
+    def _positive_keyword_match(text: str, keyword: str) -> bool:
+        for match in re.finditer(rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])", text):
+            prefix = text[max(0, match.start() - 36) : match.start()]
+            if re.search(r"\b(?:not|never|without)\b(?:\s+[a-z]+){0,4}\s*$", prefix):
+                continue
+            return True
+        return False
+
 
 class LearningMaterialValidator:
     def validate(self, value: QualityValidationInput) -> ValidatorResult:
@@ -168,7 +175,8 @@ class LearningMaterialValidator:
                     confidence=0.95,
                     title="Document is not a GenAI learning resource",
                     explanation=(
-                        "This appears to be a professional profile rather than material intended to teach "
+                        "This appears to be a professional profile rather than material "
+                        "intended to teach "
                         "a Generative AI topic."
                     ),
                     suggested_action="Upload a guide, note, paper, or technical learning resource.",
@@ -195,7 +203,10 @@ class DeterministicCorrectionValidator:
                     severity=FindingSeverity.WARNING,
                     confidence=1,
                     title="A duplicated word needs your confirmation",
-                    explanation="The same word appears twice in a row, which is likely an accidental typo.",
+                    explanation=(
+                        "The same word appears twice in a row, which is likely an "
+                        "accidental typo."
+                    ),
                     suggested_action="Confirm the correction before this resource is added.",
                     original_value=match.group(0),
                     suggested_value=word,

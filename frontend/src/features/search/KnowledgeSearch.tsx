@@ -42,6 +42,7 @@ export function KnowledgeSearch() {
         <input
           id="knowledge-search"
           value={query}
+          disabled={isSearching}
           onKeyDown={submitFromKeyboard}
           onChange={(event) => {
             const nextQuery = event.target.value;
@@ -78,13 +79,13 @@ export function KnowledgeSearch() {
           We could not search your knowledge right now. Please try again.
         </p>
       )}
-      {search.isSuccess && results.length === 0 && (
+      {search.isSuccess && !isSearching && results.length === 0 && (
         <div className="search-empty-state search-no-results">
           <p>{search.data.answer}</p>
           <span>Try a broader topic or add a resource to your knowledge base.</span>
         </div>
       )}
-      {search.isSuccess && results.length > 0 && (
+      {search.isSuccess && !isSearching && results.length > 0 && (
         <>
           <section
             className="search-answer"

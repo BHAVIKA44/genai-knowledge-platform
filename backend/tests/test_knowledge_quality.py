@@ -21,7 +21,9 @@ VALID_INPUT = QualityValidationInput(
     source_filename="rag-notes.md",
     extracted_text=(
         "Large language models use transformer attention. Retrieval augmented generation "
-        "uses embeddings and a vector database for grounded answers."
+        "uses embeddings and a vector database for grounded answers. It retrieves relevant "
+        "passages before a model responds, which helps people verify claims against reviewed "
+        "context."
     ),
     document_type=DocumentType.MARKDOWN,
 )
@@ -39,8 +41,7 @@ def test_missing_title_is_a_non_blocking_suggestion() -> None:
         VALID_INPUT.model_copy(update={"title": ""})
     )
     assert result.recommended_routing is RecommendedRouting.APPROVED
-    assert [finding.code for finding in result.findings] == ["GENAI_RELEVANT", "MISSING_TITLE"]
-    assert result.findings[-1].severity is FindingSeverity.INFO
+    assert [finding.code for finding in result.findings] == ["GENAI_RELEVANT"]
 
 
 def test_non_genai_document_is_rejected() -> None:
@@ -62,8 +63,10 @@ def test_generative_ai_content_is_within_the_supported_scope() -> None:
         VALID_INPUT.model_copy(
             update={
                 "extracted_text": (
-                    "Generative AI evaluation helps teams assess whether model responses are useful, "
-                    "clear, and grounded in approved context."
+                    "Generative AI evaluation helps teams assess whether model responses are "
+                    "useful, clear, and grounded in approved context. Teams can use the "
+                    "results to compare retrieval quality, answer relevance, and factual "
+                    "support across different prompts."
                 )
             }
         )

@@ -2,6 +2,9 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.source-storage/
+build/
+*.egg-info/
 *.py[cod]
 .env
 tests/

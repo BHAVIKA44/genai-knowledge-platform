@@ -12,7 +12,8 @@ from app.llm.models import EvidenceSource, KnowledgeAnalysis, KnowledgeClaim
 
 VALID_GENAI_TEXT = (
     b"Large language models use transformer attention. Retrieval augmented generation uses "
-    b"embeddings and a vector database for grounded answers."
+    b"embeddings and a vector database for grounded answers. It retrieves relevant passages "
+    b"before a model responds, which helps people verify claims against reviewed context."
 )
 
 
@@ -188,12 +189,9 @@ def test_grounding_failure_does_not_block_otherwise_valid_content(
         _analysis(_claim()),
     )
 
-    finding = next(
-        item for item in stored.validation_findings if item["code"] == "GROUNDING_FAILED"
-    )
     assert stored.status is DocumentStatus.APPROVED
     assert stored.grounded_claim_verifications == []
-    assert "provider secret detail" not in str(finding)
+    assert not any(item["code"] == "GROUNDING_FAILED" for item in stored.validation_findings)
 
 
 def test_document_response_safelists_evidence_and_omits_unsafe_urls(

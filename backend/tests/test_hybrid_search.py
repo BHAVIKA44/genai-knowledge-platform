@@ -157,9 +157,9 @@ def test_paraphrased_semantic_matches_meet_the_similarity_floor() -> None:
         [("document-1", "RAG", "paraphrased excerpt", 0, 0.63)]
     )
 
-    assert [result.document_id for result in search.search("retrieve context before answering")] == [
-        "document-1"
-    ]
+    results = search.search("retrieve context before answering")
+
+    assert [result.document_id for result in results] == ["document-1"]
 
 
 @pytest.mark.parametrize("similarity", [0.5, 0.52])

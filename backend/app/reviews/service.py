@@ -100,9 +100,7 @@ class ContributorReviewService:
                 "Upload the resource again to review its current content.",
                 409,
             )
-        document.extracted_text = text.replace(
-            finding.original_value, finding.suggested_value, 1
-        )
+        document.extracted_text = text.replace(finding.original_value, finding.suggested_value, 1)
 
     def _get_document(self, document_id: str) -> KnowledgeDocument:
         document = self.session.get(KnowledgeDocument, document_id)
