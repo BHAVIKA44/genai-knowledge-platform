@@ -140,7 +140,17 @@ FastAPI `BackgroundTasks` keeps uploads responsive and is acceptable for a singl
 | Digital PDF, Markdown, text | Broad format support | Narrower intake; reliable, testable behavior. |
 | Background task boundary | Durable worker queue | Not durable across process failure; acceptable single-instance demo scope. |
 
-## 13. What I would do next
+## Production considerations beyond the MVP
+
+In production, uploaded documents, retrieved passages, and user questions should be treated as untrusted input. I would add prompt-injection checks, clearer separation between system instructions, retrieved knowledge, and user input, and context sanitization before content reaches the LLM. Safer ingestion would also include malware scanning and stricter file checks.
+
+I would measure answer quality continuously instead of relying on a few examples. That means automated benchmarks and human review for hallucinations, retrieval precision and recall, answer grounding, and source quality. Prompts and evaluation datasets would be versioned, and changes to a prompt or model would be checked before release. Rate limits, abuse controls, request budgets, and cost monitoring would keep LLM usage predictable.
+
+The current background-task approach would become a durable job queue with retries and dead-letter handling. A production service would also need authentication, authorization, tenant isolation, secret rotation, metrics, tracing, dashboards, alerting, and stronger security controls. Secrets would come from a managed runtime store and stay out of logs and image layers. Audit trails, encryption, retention policies, backups, and tested restores would protect source and database data.
+
+I kept these concerns outside the five-day MVP so I could deliver a complete working slice: trusted ingestion, deterministic workflow ownership, and grounded retrieval. They are the next layer around that foundation, not a replacement for it.
+
+## 14. What I would do next
 
 1. Replace in-process background work with a durable queue and worker, including idempotency and operational visibility.
 2. Build an admin-review workspace for resolving material concerns without bypassing the publication boundary.
