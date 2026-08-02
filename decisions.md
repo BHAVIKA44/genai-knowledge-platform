@@ -1,160 +1,69 @@
 # Decisions
 
-## 1. Reframing the problem: from document ingestion to trusted knowledge
+## 1. I chose to build a trusted knowledge system, not another document parser.
 
-The brief was to turn messy documents into structured, queryable data. I chose not to make parsing the differentiator. Parsing matters: without reliable extraction there is no useful knowledge product. PDF layout, text extraction, OCR, chunking, and embeddings already have mature tools. Building another parser would have been incremental engineering in a five-day exercise.
+The project brief was about turning messy documents into structured, queryable data. Parsing is necessary, but mature libraries already solve much of extraction, OCR, chunking, and embeddings. Building another parser would mostly be engineering around solved problems. I chose to spend my time on a harder product question: how does a system decide what deserves to become trusted knowledge?
 
-The harder product question is what happens after text is extracted: **should this information become part of a shared knowledge base at all?** Even a good retrieval system will confidently return wrong answers if the knowledge it indexes is poor. Search quality starts at admission, not ranking.
+## 2. Good retrieval starts before retrieval.
 
-I framed the product as a trusted-knowledge workflow:
+A retrieval system cannot repair a poor knowledge base. If low-quality information is indexed, even the best search algorithm will confidently return wrong answers. I therefore treated knowledge admission as the core product problem instead of treating retrieval as the beginning of the pipeline.
 
-```text
-ingestion → quality evaluation → review where needed → trusted indexing → queryable knowledge
-```
+## 3. The Knowledge Quality Engine is the product boundary.
 
-Trust is the differentiator; parsing is the enabler. Success is not maximum upload throughput or the largest corpus. It is a focused set of Generative AI learning resources that users can search with confidence. I did not optimize for broad document coverage, unconstrained chat, or fully automated publication.
+Every uploaded document passes through deterministic validation, semantic analysis, and review before it can be indexed. The goal is not to process every document. The goal is to ensure only trusted knowledge influences future answers.
 
-### Why I chose GenAI as the first domain
+## 4. LLMs provide intelligence. Application code provides orchestration.
 
-After deciding to build a Knowledge Quality Engine, I considered invoices and medical documents. Trust matters in both, but defining “correct” would require domain rules, expert knowledge, external sources, and more time. In five days, I could not build a credible quality engine for either without oversimplifying the problem or pretending to verify more than the system could support.
+The LLM is responsible for understanding language, extracting claims, and producing structured findings. Application code owns validation order, lifecycle transitions, retries, persistence, indexing, publication, and every state change. Models should assist decisions, not control systems.
 
-I chose GenAI learning resources because the domain is narrow enough to test quality decisions meaningfully. That let me focus on quality checks, evidence-backed validation, confidence gates, contributor and admin review, and approved-only search. This is not because GenAI knowledge is unimportant. It is an honest MVP boundary. The design can extend to regulated domains once proper rules and expert validation are available.
+## 5. Deterministic checks should run before probabilistic reasoning.
 
-## 2. Product principles
+File size, MIME type, page count, duplicate detection, language detection, and other objective validations run before any LLM call. Cheap and deterministic checks remove obvious failures early, reduce cost, and prevent the model from solving problems the application already knows how to solve.
 
-**Quality before availability.** A successfully uploaded file is not automatically useful knowledge. Documents are evaluated before they can influence retrieval.
+## 6. Human review is part of the workflow, not a fallback.
 
-**Review before retrieval.** Only `APPROVED` documents are chunked, embedded, and considered by search. Pending, rejected, failed, and admin-review documents remain outside the retrieval corpus.
+The system only asks for human judgment when automation reaches its limit. Objective corrections stay with the contributor. Material ambiguity, contradictions, or factual concerns move to admin review. Automation should stop where judgment begins.
 
-**Explicit states over hidden automation.** The document lifecycle is modeled as `UPLOADED`, `PROCESSING`, `VALIDATING`, `APPROVED`, `CONTRIBUTOR_REVIEW_REQUIRED`, `ADMIN_REVIEW_REQUIRED`, `REJECTED`, or `FAILED`. This prevents the UI and API from collapsing materially different outcomes into a vague “processed” state.
+## 7. Only reviewed knowledge should influence answers.
 
-**Human judgment for material ambiguity.** The system can recognize obvious mechanical defects, but it should not quietly rewrite a contributor’s content or pretend semantic uncertainty is deterministic. It asks for an explicit contributor decision only for objective, high-confidence corrections; material concerns are held for admin review.
+The system retrieves information only from approved documents. I intentionally did not add a general model-knowledge fallback because I wanted every answer to have a clear provenance. I accepted lower answer coverage to preserve trust.
 
-**Graceful degradation over false confidence.** External verification and model providers can be unavailable. An outage is not evidence that a document is wrong and must not leak provider internals. The platform uses available evidence or fails safely.
+## 8. Retrieval quality determines answer quality.
 
-## 3. Scope: what I built and what I deliberately did not build
+Vector search and lexical search fail in different ways, so I combined both instead of choosing one. I optimized for precision over maximum recall because irrelevant context often leads to confident hallucinations. Better retrieval is often more valuable than a larger model.
 
-The implementation is a focused vertical slice for English-language Generative AI learning material. It supports digital PDFs, Markdown, and plain text; applies deterministic and semantic checks; persists document state; supports review outcomes; indexes accepted content; and answers questions from reviewed knowledge.
+## 9. Reliable systems grow by confidence, not by supported formats.
 
-I kept the input contract narrow. Images, scanned PDFs, DOCX, HTML, URLs, and pasted notes are not supported. Digital PDFs are parsed with OCR disabled, so a scan fails safely rather than producing unreliable text. The limits are a maximum file size of 10 MB, a maximum of 50 PDF pages, and at least 150 meaningful characters. A title is optional, and a Markdown heading can provide a fallback title.
+I intentionally started with digital PDFs, Markdown, and TXT because their extraction quality is predictable and measurable. OCR, scanned PDFs, HTML, and other formats introduce additional uncertainty. I would rather support fewer formats with consistent behavior than claim broad support without understanding extraction quality.
 
-I deferred a durable queue, a full admin-review workspace, broad format support, authentication and multi-tenancy, learned ranking, and a model-only answer fallback. They are sensible production evolutions, but not prerequisites for validating the central thesis: a knowledge base should decide what it trusts before it retrieves.
+## 10. Technology choices should reduce operational complexity.
 
-## 4. Knowledge Quality Engine
+Every major technology decision was made to simplify the system rather than make it more impressive. PostgreSQL with pgvector keeps lifecycle state, metadata, lexical search, and vectors in one system. FastAPI fits naturally with the Python AI ecosystem. Gemini provided structured output and Google Search Grounding through one provider, allowing me to spend my limited time on the Knowledge Quality Engine instead of integrating additional search infrastructure. Docker ensures the runtime remains reproducible across environments.
 
-The Knowledge Quality Engine is the admission boundary between raw source material and searchable knowledge. It returns structured findings and a recommended route.
+## 11. Abstract volatility, not business logic.
 
-The evaluation is layered. Cheap, deterministic checks run before parsing or LLM analysis: extension and MIME agreement, non-empty input, size, PDF page count, content length, English-language signal, GenAI relevance, professional-profile detection, and SHA-256 identity. This avoids spending provider calls and embedding work on files that are plainly outside scope or unusable.
+I introduced abstractions around components that are likely to change, such as the LLM provider, parser, embeddings, and retrieval layer. Product rules like review decisions, lifecycle transitions, and publication logic remain explicit because they are the business itself, not replaceable infrastructure.
 
-The semantic stage produces structured topics, claims, and findings. The application then decides where the document goes:
+## 12. Reliability is a product feature.
 
-| Outcome | Decision boundary |
-| --- | --- |
-| `APPROVED` | Readable, relevant material with no material blocker; optional suggestions do not stop publication. |
-| `CONTRIBUTOR_REVIEW_REQUIRED` | One objective deterministic correction, currently an adjacent duplicated word, requires consent. |
-| `ADMIN_REVIEW_REQUIRED` | A material semantic or factual concern needs human judgment. |
-| `REJECTED` | Unsupported, irrelevant, insufficient, unreadable, or otherwise unusable content. |
-| `FAILED` | A processing or system failure, not a judgment about the document’s quality. |
+Failures should be explicit and recoverable. The system distinguishes processing failures from quality rejections, contributor actions are transactional and idempotent, and publication happens exactly once. Users should always understand whether a document failed because of the system or because of the content.
 
-Minor editorial issues should not prevent useful knowledge from being available. Ambiguous or materially misleading content should never be published merely because an LLM produced a plausible summary.
+## 13. The biggest production feature missing is evaluation, not another model.
 
-### LLMs provide intelligence; application code owns orchestration
+The project includes representative manual testing and application-level tests, but I intentionally did not build a formal LLM evaluation framework within the scope of this exercise. A production system should continuously measure retrieval quality, groundedness, citation correctness, contradiction routing, and prompt-injection resilience using versioned benchmark datasets. A prompt or model change should not ship because a few examples looked better.
 
-I use the LLM for semantic work: topic and claim extraction, relevance judgment, and structured quality findings. Application code owns every consequential action: validation order, lifecycle transitions, routing, retries, persistence, duplicate handling, correction application, indexing, and publication. Model output is structured and schema-validated before use. It informs the workflow; it does not control it.
+## 14. Prompt injection should be treated as a production engineering problem.
 
-The model never changes a document status, writes arbitrary database state, controls retries, or decides publication on its own. LLMs are probabilistic; state changes must be predictable, testable, and auditable. A provider change or malformed response cannot silently change lifecycle behavior. Invalid output fails safely.
+Uploaded documents, retrieved passages, and user questions should all be considered untrusted input. A production deployment would introduce instruction separation, context sanitization, adversarial evaluation, stricter document validation, and dedicated prompt-injection testing. This was intentionally left outside the MVP so I could focus on building a complete trusted-ingestion workflow first.
 
-## 5. Human-in-the-loop review design
+## 15. The next investment should be measurement, not more AI complexity.
 
-I intentionally did not turn missing titles into a review workflow. Titles are optional metadata, not a reason to stop a learning resource from becoming useful. The platform derives a fallback from the filename and can use a Markdown heading when present.
+Before adding OCR, more document formats, reranking, or unrestricted model knowledge, I would first invest in evaluation, retrieval observability, durable workers, structured feedback loops, and operational reliability. Better measurement makes every future improvement safer.
 
-Contributor review is reserved for safe, visible corrections. The current deterministic correction detects an immediately repeated word. The contributor sees the current and suggested values and chooses to accept or decline.
+## 16. Users should experience determinism, even if the model is probabilistic.
 
-Acceptance applies the correction to extracted content, transitions the document to approval, and indexes it in the same transactional decision flow. Decline transitions it to rejection and removes any chunks. Repeating the same action is idempotent, and the unique `(document_id, position)` chunk constraint protects against duplicate publication.
+An LLM may generate different outputs for the same input, but the surrounding application should always produce consistent behavior. Structured outputs, validation, lifecycle management, and deterministic business rules ensure that the user interacts with a reliable system rather than directly with a probabilistic model.
 
-Admin review represents a different class of uncertainty: a material semantic finding, contradiction, or factual concern. It deliberately offers no contributor “fix” button because resolving such a concern requires judgment beyond a mechanical edit. Admin-review documents are not searchable.
+## 17. Good UX reduces uncertainty, not just clicks.
 
-## 6. Ingestion, storage, and lifecycle data
-
-I used Docling rather than creating a parser. For PDFs, OCR is disabled: a scanned source fails clearly instead of contributing guessed extraction. Markdown and text are decoded directly into a normalized document representation.
-
-Uploaded bytes are stored under generated keys rather than user filenames. The original filename is metadata, not a filesystem path. Docker Compose mounts a named source-storage volume at the configured storage root, so recreating the backend does not orphan source records. PostgreSQL remains the system of record for document metadata, findings, analysis, review decisions, and lifecycle state.
-
-Exact duplicate detection uses SHA-256 from the uploaded bytes, not filenames. Same bytes under a different filename are duplicates; changed bytes are a new submission. Active and approved duplicates are rejected. Rejected and failed submissions are retryable after their old source and chunks are removed. Filename comparison would reject legitimate revisions and miss identical files with different names.
-
-Documents and chunks are separate records. Chunks carry position, text, source context, embedding metadata, and a 384-dimensional vector. A foreign key with cascade deletion and a unique document-position constraint preserve publication integrity. Alembic migrations create the lifecycle, review, source-storage, grounded-verification, and vector schema.
-
-## 7. Retrieval and answer generation
-
-Search uses PostgreSQL full-text retrieval and pgvector cosine similarity over BGE embeddings. Lexical retrieval is valuable for exact terminology; vector retrieval is valuable when a user uses different wording. I rejected vector-only retrieval because it can miss exact terms, and lexical-only retrieval because it can miss paraphrases. Combining both improves recall without reducing the product to filename search.
-
-Precision is the more important trade-off for this product. A broad keyword fallback was removed because it turned incidental word overlap into false results. Vector candidates must pass a configurable similarity floor, and the lexical path removes weak tail matches relative to the strongest hit. Approved status is enforced in both retrieval queries, not merely hidden in the frontend.
-
-The answer endpoint reuses retrieval rather than creating a second search path. It selects approved chunks, bounds assembled context to 12,000 characters, and asks the configured Gemini client to answer only from that context. Supporting resource cards are returned alongside the answer so users can see the reviewed material behind it.
-
-For this 5 day exercise, I deliberately chose reviewed-only answers. It gives the product a simple, trustworthy boundary: users know answers come from approved material, not an unconstrained chatbot. If retrieval finds no sufficiently relevant knowledge, the product says so. I accepted lower answer coverage to avoid confusing reviewed and unreviewed information. Once the reviewed knowledge path is mature, a clearly labelled model-knowledge fallback is a natural next step. The prompt requires partial answers to say what is not covered, and the UI renders the complete Markdown answer rather than clipping it.
-
-## 8. LLM and external verification
-
-The backend uses the Google GenAI SDK with a configurable Gemini Flash model (the current default is `gemini-3.6-flash`). I needed structured output for analysis and answer generation, and Google Search Grounding for selected claims. Gemini provided both through one provider. Choosing Claude or OpenAI would also mean adding a separate search provider, increasing the architecture I had to operate. With five days available, I spent that effort on the Knowledge Quality Engine instead of search infrastructure. Pydantic validates analysis, claim, and answer outputs before application code uses them.
-
-Google Search Grounding is used selectively for time-sensitive or externally verifiable claims. It collects evidence; application code makes the final route. External verification can be quota-limited or unavailable, so an outage means missing additional evidence, not automatic invalidity. Provider errors are mapped to safe application errors and sanitized logs. The UI never receives a raw SDK object, provider payload, credential, or provider error detail.
-
-## 9. Frontend and UX decisions
-
-The frontend is a React and TypeScript product surface, not an operations dashboard. TanStack Query owns upload, polling, review, and search state; local state is limited to file selection, input, disclosure, and presentation.
-
-The UX priority is legible state. Uploading clears the prior outcome; polling stops at terminal states; decision actions guard repeated requests; accepting or declining a review removes stale controls, resets the upload surface, and confirms the outcome. Errors are plain and actionable. Search hides stale answers while a new request is in flight and disables repeated submission until it finishes.
-
-The dark HUD aesthetic is intentional but secondary. The important UX decisions are progressive disclosure of requirements, distinct terminal outcomes, visible review reasons, full answer rendering, keyboard-operable controls, responsive layouts, and reduced-motion behavior.
-
-## 10. Technology and architecture choices
-
-I chose a modular FastAPI monolith because document ingestion, review decisions, retrieval, and persistence need clear transaction boundaries more than service distribution. FastAPI and Pydantic provide typed HTTP contracts and fit the Python parsing and ML ecosystem without a heavy framework layer. Routes remain thin; services coordinate parsing, quality evaluation, review, indexing, and retrieval.
-
-I chose PostgreSQL with pgvector because lifecycle state, metadata, lexical search, and embeddings need transactional consistency. I rejected a separate vector database because it adds operational complexity and synchronization risk with little value at this project scale. PostgreSQL full-text search and cosine vector search cover the required retrieval behavior, while the HNSW index leaves room to grow beyond a demo dataset.
-
-Docker provides reproducible local behavior and packages the CPU-only BGE model plus Docling artifacts needed for offline digital-PDF parsing. The image is larger and slower to build than a thin API container; that trade-off avoids runtime Hugging Face downloads. Compose persists database and source-storage volumes across backend recreation.
-
-### Abstractions only where they added value
-
-I added boundaries only around change-prone external dependencies: the LLM client, parser, embeddings, and retrieval. The product-specific lifecycle, review rules, and routing stay direct because more abstraction would add complexity without improving maintenance.
-
-## 11. Reliability and failure handling
-
-The API has a typed error envelope and maps domain failures to user-safe messages. Known failures such as unsupported type, unreadable PDF, duplicate submission, invalid lifecycle transition, and search failure remain explicit. Unexpected failures use a generic safe message. Processing failure is recorded as `FAILED`, preserving the distinction from a quality rejection.
-
-Multi-step contributor decisions are transactional: failed decisions roll back, and a successful approval indexes once. The ingestion path removes stored-source data if database persistence fails. Search is restricted to approved documents at query time, which protects retrieval even if a UI state is stale.
-
-FastAPI `BackgroundTasks` keeps uploads responsive and is acceptable for a single-instance demo, but it is not durable. A process failure can interrupt accepted work. I deferred a worker queue because it adds too much operational scope for five days. The next production step is a durable worker and queue with idempotent jobs, visibility, and retry policy.
-
-## 12. Alternatives considered and rejected
-
-| Decision | Alternative | Trade-off accepted |
-| --- | --- | --- |
-| Trust engine | Broader parsing/OCR product | Less format breadth; mature tools already solve much of parsing, while admission trust is the harder product problem. |
-| Hybrid retrieval | Vector-only or lexical-only retrieval | More query logic; better exact-term and paraphrase behavior. |
-| PostgreSQL + pgvector | Separate vector database | Fewer specialized scaling options; one consistent system of record without synchronization risk. |
-| Explicit correction consent | Silent auto-fixes | One extra decision; preserves contributor ownership. |
-| Reviewed-only answers | Model-only fallback | Lower answer coverage; users never confuse reviewed and unreviewed information. |
-| Digital PDF, Markdown, text | Broad format support | Narrower intake; reliable, testable behavior. |
-| Background task boundary | Durable worker queue | Not durable across process failure; acceptable single-instance demo scope. |
-
-## Production considerations beyond the MVP
-
-In production, uploaded documents, retrieved passages, and user questions should be treated as untrusted input. I would add prompt-injection checks, clearer separation between system instructions, retrieved knowledge, and user input, and context sanitization before content reaches the LLM. Safer ingestion would also include malware scanning and stricter file checks.
-
-I would measure answer quality continuously instead of relying on a few examples. That means automated benchmarks and human review for hallucinations, retrieval precision and recall, answer grounding, and source quality. Prompts and evaluation datasets would be versioned, and changes to a prompt or model would be checked before release. Rate limits, abuse controls, request budgets, and cost monitoring would keep LLM usage predictable.
-
-The current background-task approach would become a durable job queue with retries and dead-letter handling. A production service would also need authentication, authorization, tenant isolation, secret rotation, metrics, tracing, dashboards, alerting, and stronger security controls. Secrets would come from a managed runtime store and stay out of logs and image layers. Audit trails, encryption, retention policies, backups, and tested restores would protect source and database data.
-
-I kept these concerns outside the five-day MVP so I could deliver a complete working slice: trusted ingestion, deterministic workflow ownership, and grounded retrieval. They are the next layer around that foundation, not a replacement for it.
-
-## 14. What I would do next
-
-1. Replace in-process background work with a durable queue and worker, including idempotency and operational visibility.
-2. Build an admin-review workspace for resolving material concerns without bypassing the publication boundary.
-3. Add retrieval evaluation data, richer reranking, and measured threshold tuning rather than heuristic expansion.
-4. Add scanned-PDF support only when the OCR quality path can be evaluated and explained reliably.
-5. Add authentication, tenancy, object storage, observability, and deployment hardening for a shared production service.
-6. Consider an explicitly labelled model-knowledge fallback only after the reviewed and non-reviewed answer modes can be kept unmistakably separate.
+The UI was designed to explain the system rather than simply display it. Uploads expose lifecycle states, review decisions are visible, long-running operations communicate progress, and answers show supporting reviewed resources instead of appearing as black-box responses.
