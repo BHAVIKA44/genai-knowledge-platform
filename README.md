@@ -24,6 +24,22 @@ Upload a resource
 
 Only approved resources participate in retrieval and answer generation.
 
+## Product walkthrough
+
+The deployed client keeps the core workflow visible: discover reviewed knowledge, submit a resource for review, then use accepted material in search.
+
+### Start with the trust model
+
+![GenAI Knowledge Platform landing page with the reviewed-contribution promise and the main navigation](docs/images/app-overview.png)
+
+### Search reviewed knowledge
+
+![Search workspace with a natural-language query field, an empty state, and the supporting knowledge visual](docs/images/search-workspace.png)
+
+### Submit a resource for review
+
+![Upload workspace showing the supported file formats, optional title field, requirements disclosure, and review action](docs/images/add-knowledge-workspace.png)
+
 ## Key features
 
 - Upload digital PDFs, Markdown, and plain-text resources.
@@ -147,10 +163,11 @@ Set `GEMINI_API_KEY` in `.env`. Keep this local file untracked.
 
 ```bash
 docker compose up --build -d
+docker compose exec backend alembic upgrade head
 docker compose ps
 ```
 
-The backend runs migrations at startup. Confirm readiness with:
+The schema is versioned with Alembic. Apply the current revision after the containers start, then confirm readiness:
 
 ```bash
 curl http://localhost:8000/health/ready
@@ -192,7 +209,6 @@ Configuration is centralized in `backend/app/core/config.py`. `.env.example` con
 | `MIN_MEANINGFUL_CHARACTERS` | Minimum useful extracted-content threshold |
 | `GEMINI_TIMEOUT_SECONDS` | Provider request timeout |
 | `GEMINI_MAX_RETRIES` | Bounded Gemini retry count |
-| `PROCESSING_DELAY_SECONDS` | Optional local processing delay |
 
 For the browser client, set `VITE_API_URL` only when the API is not at `http://localhost:8000`.
 
