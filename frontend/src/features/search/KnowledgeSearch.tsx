@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { ArrowUpRight, Search } from "lucide-react";
+import { ArrowUpRight, Search , X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { answerKnowledge } from "../../api/search";
 
@@ -31,7 +31,10 @@ export function KnowledgeSearch() {
     event.preventDefault();
     submitQuery();
   }
-
+     function clearSearch() {
+      setQuery("");
+       setSubmittedQuery(null);
+}
   return (
     <div className="trusted-search">
       <form className={`trusted-search-form${formState}`} onSubmit={submit}>
@@ -51,6 +54,17 @@ export function KnowledgeSearch() {
           }}
           placeholder="Search Generative AI topics, concepts, or techniques"
         />
+                        {query && (
+                        <button
+            type="button"
+            onClick={clearSearch}
+            disabled={isSearching}
+            aria-label="Clear search"
+            className="button"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        )}
         <button
           type="submit"
           disabled={isSearching || !query.trim()}
